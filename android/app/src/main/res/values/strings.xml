@@ -1,0 +1,41 @@
+<resources>
+    <string name="app_name">Letras</string>
+    <string name="connect">Conectar con Spotify</string>
+    <string name="connect_hint">Se abre Firefox para iniciar sesión. Al terminar, vuelve aquí solo.</string>
+    <string name="missing_config">Falta configurar de dónde sale la música.\nEn android/local.properties pon javbots.token=… (Javbots) o spotify.clientId=… (Spotify) y vuelve a compilar.</string>
+    <string name="looking_for_pc">Buscando la PC con Javbots…</string>
+    <string name="bg_sky">Fondo: cielo según la hora</string>
+    <string name="bg_art">Fondo: artistas (%1$d)</string>
+    <string name="bg_cover">Fondo: carátula del disco</string>
+    <string name="opt_title">Opciones</string>
+    <string name="opt_background">Fondo: %1$s</string>
+    <string name="opt_bg_sky">cielo según la hora</string>
+    <string name="opt_bg_art">artistas (%1$d imágenes)</string>
+    <string name="opt_bg_cover">carátula del disco</string>
+    <string name="opt_fit">Arte: %1$s</string>
+    <string name="opt_fit_whole">completo</string>
+    <string name="opt_fit_fill">llenar la pantalla</string>
+    <string name="opt_every">Cambiar arte: %1$s</string>
+    <string name="opt_every_song">con cada canción</string>
+    <string name="opt_every_min">cada %1$d min</string>
+    <string name="opt_scrim">Oscurecer detrás de la letra: %1$s</string>
+    <string-array name="scrim_levels">
+        <item>poco</item>
+        <item>medio</item>
+        <item>mucho</item>
+    </string-array>
+    <string name="opt_next_art">Siguiente fondo de artista</string>
+    <string name="close">Cerrar</string>
+    <string name="bg_no_art">No hay fondos en Pictures/Letras/fondos</string>
+    <string name="nothing_playing">Nada sonando en Spotify</string>
+    <string name="paused">En pausa</string>
+    <string name="searching">Buscando la letra…</string>
+    <string name="no_lyrics">No encontré la letra de esta canción</string>
+    <string name="instrumental">♪ Instrumental ♪</string>
+    <string name="not_a_song">Spotify está reproduciendo algo que no es canción</string>
+    <string name="network_error">Sin conexión con Spotify. Reintentando…</string>
+    <string name="login_failed">No se pudo iniciar sesión: %1$s</string>
+    <string name="logout_title">¿Cerrar sesión de Spotify?</string>
+    <string name="logout">Cerrar sesión</string>
+    <string name="cancel">Cancelar</string>
+</resources>

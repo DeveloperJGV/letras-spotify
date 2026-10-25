@@ -1,0 +1,14 @@
+# Sistema / editores
+Thumbs.db
+.idea/
+*.iml
+
+# Android / Gradle
+.gradle/
+.kotlin/
+build/
+local.properties
+*.apk
+
+# Notas de trabajo (datos personales: IPs, serie de la tablet, pendientes). Solo locales.
+PLAN.md

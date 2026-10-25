@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.Letras" parent="android:Theme.Material.NoActionBar.Fullscreen">
+        <item name="android:windowBackground">@color/background</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:colorPrimary">@color/background</item>
+        <item name="android:colorPrimaryDark">@color/background</item>
+    </style>
+</resources>

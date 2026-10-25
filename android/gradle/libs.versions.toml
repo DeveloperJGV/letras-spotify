@@ -1,0 +1,13 @@
+[versions]
+agp = "9.4.1"
+compileSdk = "36"
+targetSdk = "36"
+# La tablet Lenovo TB3-710I trae Android 5.1. Por eso no hay AndroidX: sus versiones actuales piden minSdk 23.
+minSdk = "22"
+kotlinxCoroutines = "1.11.0"
+
+[libraries]
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
