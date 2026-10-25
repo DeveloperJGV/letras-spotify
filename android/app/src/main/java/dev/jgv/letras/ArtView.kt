@@ -65,21 +65,12 @@ class ArtView @JvmOverloads constructor(context: Context, attrs: AttributeSet? =
 
     private var backdrop: Bitmap? = null
     private val backdropPaint = Paint().apply { isFilterBitmap = true }
-    /** Suavizar siempre (carátula borrosa) y llenar la pantalla aunque [fit] esté prendido. */
-    private var smoothFill = false
-
     /** Muestra lo que dio [decode]. */
-    fun show(art: Any?) = show(art, smoothFill = false)
-
-    /** Para la carátula: ya viene borrosa, así que se suaviza y llena la pantalla. */
-    fun showSmooth(b: Bitmap) = show(b, smoothFill = true)
-
-    private fun show(art: Any?, smoothFill: Boolean) {
+    fun show(art: Any?) {
         movie = art as? Movie
         bitmap = art as? Bitmap
-        this.smoothFill = smoothFill
         movieStart = SystemClock.uptimeMillis()
-        backdrop = if (smoothFill) null else makeBackdrop()
+        backdrop = makeBackdrop()
         setLayerType(if (movie != null) LAYER_TYPE_SOFTWARE else LAYER_TYPE_HARDWARE, null)
         updateTicker()
         invalidate()
@@ -130,7 +121,7 @@ class ArtView @JvmOverloads constructor(context: Context, attrs: AttributeSet? =
 
         // Si la imagen casi tiene la forma de la pantalla, llena aunque esté en "completo": se recorta muy poco.
         val sameShape = abs(aw / ah - w / h) / (w / h) < SAME_SHAPE
-        val scale = if (fit && !smoothFill && !sameShape) {
+        val scale = if (fit && !sameShape) {
             backdrop?.let { bd ->
                 drawCover(canvas, bd, backdropPaint)
                 canvas.drawColor(BACKDROP_DIM)
@@ -141,8 +132,8 @@ class ArtView @JvmOverloads constructor(context: Context, attrs: AttributeSet? =
         } else {
             max(w / aw, h / ah)
         }
-        // Pixel art (imagen chica muy agrandada) sin suavizar; fotos y la carátula borrosa, suavizadas.
-        paint.isFilterBitmap = smoothFill || scale < 2f
+        // Pixel art (imagen chica muy agrandada) sin suavizar; fotos e ilustraciones, suavizadas.
+        paint.isFilterBitmap = scale < 2f
 
         canvas.save()
         canvas.translate((w - aw * scale) / 2, (h - ah * scale) / 2)

@@ -23,7 +23,6 @@ paseando abajo. Cuando no suena nada: reloj, o marco de fotos.
     hoy** (creciente, llena, menguante…, calculada por la fecha).
   - **Artistas:** tus imágenes o GIF animados, con su crédito en la esquina. Tocar el crédito (›) pasa a la
     siguiente. Con la tablet parada usa las verticales (si hay) y las que casi tienen la forma de la pantalla la llenan.
-  - **Carátula:** la portada del disco, desenfocada.
 - **Hunter y Tango** en la orilla de abajo:
   - Suena música: se ponen **audífonos**, pasean, **mueven la cabeza**, se sientan moviendo la cola y **tocan**:
     Hunter de DJ, guitarra y maracas; Tango teclado, guitarra, maracas y tambor. Si Spotify da el tempo de la
@@ -61,7 +60,7 @@ Por cable con adb también se puede:
 
 | Opción                         | Valores                                                   |
 | ------------------------------ | --------------------------------------------------------- |
-| Fondo                          | automático · cielo · artistas · carátula                  |
+| Fondo                          | automático · cielo · artistas                             |
 | Arte                           | completo (con relleno borroso) · llenar la pantalla       |
 | Cambiar arte                   | con cada canción · cada 5, 15 o 60 min                    |
 | Oscurecer detrás de la letra   | poco · medio · mucho                                      |

@@ -101,7 +101,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
      * Qué hay detrás de la letra. AUTO: arte de artistas con la música (si hay) y el cielo con su luna cuando no
      * suena nada.
      */
-    private enum class Background { AUTO, SKY, ART, COVER }
+    // (Hubo un fondo de carátula desenfocada; se quitó porque no se distinguía nada.)
+    private enum class Background { AUTO, SKY, ART }
     private var background = Background.AUTO
     private var artIndex = -1
     private var lastArtChangeAt = 0L
@@ -111,7 +112,6 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private var artEveryMin = 0
     private var scrimLevel = 1
     private var artJob: Job? = null
-    private var coverBitmap: Bitmap? = null
 
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDoubleTap(e: MotionEvent): Boolean {
@@ -344,7 +344,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         brand.visibility = View.GONE
         header.visibility = View.VISIBLE
         lyricsScroll.visibility = View.VISIBLE
-        // Sobre arte o carátula el velo es más ligero: que se luzca el fondo sin perder la letra.
+        // Sobre el arte el velo es más ligero: que se luzca el fondo sin perder la letra.
         scrim.animate().alpha(scrimAlpha()).setDuration(600).start()
         if (!wasShowing && background == Background.AUTO) applyBackground(newArt = !artShown)
     }
@@ -399,7 +399,6 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         coverForUrl = url
         coverJob?.cancel()
         cover.setImageDrawable(null)
-        coverBitmap = null
         cover.visibility = if (url == null) View.GONE else View.VISIBLE
         if (url == null) return
         coverJob = scope.launch {
@@ -412,8 +411,6 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             }
             if (coverForUrl != url) return@launch
             cover.setImageBitmap(bitmap)
-            coverBitmap = bitmap
-            if (background == Background.COVER) showCoverBackground()
         }
     }
 
@@ -594,7 +591,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         var next = wanted
         if (next == Background.ART && artFiles().isEmpty()) {
             toast(context.getString(R.string.bg_no_art))
-            next = Background.COVER
+            next = Background.SKY
         }
         background = next
         prefs().edit().putInt(KEY_BACKGROUND, next.ordinal).apply()
@@ -606,7 +603,6 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         Background.AUTO -> context.getString(R.string.bg_auto)
         Background.SKY -> context.getString(R.string.bg_sky)
         Background.ART -> context.getString(R.string.bg_art, artFiles().size)
-        Background.COVER -> context.getString(R.string.bg_cover)
     }
 
     /** Velo detrás de la letra: suave, medio o fuerte. */
@@ -622,11 +618,6 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
 
     private fun applyBackground(newArt: Boolean) {
         when {
-            background == Background.COVER -> {
-                credit.visibility = View.GONE
-                artShown = false
-                showCoverBackground()
-            }
             background.showsArt() -> if (newArt || !artShown) nextArt() else {
                 art.visibility = View.VISIBLE
                 credit.visibility = View.VISIBLE
@@ -669,22 +660,6 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             }.start()
             creditText.text = ArtView.credit(file)
             credit.visibility = View.VISIBLE
-        }
-    }
-
-    /** La carátula desenfocada de verdad (no en cuadros), llenando la pantalla. */
-    private fun showCoverBackground() {
-        val c = coverBitmap
-        if (c == null) {
-            art.visibility = View.GONE
-            return
-        }
-        scope.launch {
-            val blurred = withContext(Dispatchers.Default) { Blur.soft(c, w = 40, radius = 3) }
-            if (background != Background.COVER || coverBitmap !== c) return@launch
-            art.showSmooth(blurred)
-            art.alpha = 1f
-            art.visibility = View.VISIBLE
         }
     }
 
