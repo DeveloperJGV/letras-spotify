@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RectF
 import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.os.SystemClock
@@ -13,6 +14,8 @@ import android.util.AttributeSet
 import android.view.View
 import java.util.Calendar
 import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
 import kotlin.random.Random
@@ -27,13 +30,17 @@ class SkyView @JvmOverloads constructor(context: Context, attrs: AttributeSet? =
     /** Para probar: hora fija en horas decimales (p. ej. 19.5). null = la hora real. */
     var forcedHour: Float? = null
 
+    /** Para probar: fase de la luna fija (0 = nueva, 0.5 = llena). null = la de hoy. */
+    var forcedMoonPhase: Float? = null
+
     private val skyPaint = Paint()
     private val starPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val cloudPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val moonPath = Path()
-    private val moonCut = Path()
+    private val moonOval = RectF()
+    private val terminatorOval = RectF()
     private val cloudPath = Path()
     // Vacío: op(DIFFERENCE) contra nada solo une las figuras en una (se pinta una vez, sin traslapes).
     private val cloudBase = Path()
@@ -147,17 +154,38 @@ class SkyView @JvmOverloads constructor(context: Context, attrs: AttributeSet? =
             val x = w * (0.9f - 0.8f * moonProgress)
             val y = h * (0.55f - 0.42f * sin(moonProgress * PI.toFloat()))
             val r = w * 0.045f
-            glowPaint.shader = RadialGradient(x, y, r * 3f, Color.argb((70 * night).toInt(), 200, 215, 255), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+            val phase = forcedMoonPhase ?: moonPhase(System.currentTimeMillis())
+            val lit = illumination(phase)
+            // Halo según qué tanto se ve: luna llena brilla más que una rayita.
+            glowPaint.shader = RadialGradient(x, y, r * 3f, Color.argb((25 + 70 * lit * night).toInt(), 200, 215, 255), Color.TRANSPARENT, Shader.TileMode.CLAMP)
             canvas.drawCircle(x, y, r * 3f, glowPaint)
-            // Media luna: el círculo menos otro corrido (sin pintar encima, así no deja mancha).
-            moonPath.reset()
-            moonPath.addCircle(x, y, r, Path.Direction.CW)
-            moonCut.reset()
-            moonCut.addCircle(x + r * 0.5f, y - r * 0.25f, r * 0.85f, Path.Direction.CW)
-            moonPath.op(moonCut, Path.Op.DIFFERENCE)
+            // La parte oscura apenas se ve (luz cenicienta).
+            bodyPaint.color = Color.argb((40 * night).toInt(), 200, 210, 240)
+            canvas.drawCircle(x, y, r, bodyPaint)
+            moonPhasePath(moonPath, x, y, r, phase)
             bodyPaint.color = Color.rgb(236, 238, 248)
             canvas.drawPath(moonPath, bodyPaint)
         }
+    }
+
+    /**
+     * La parte iluminada de la luna vista desde México (hemisferio norte): crece por la derecha y mengua por la
+     * izquierda. Es medio círculo del lado iluminado más (o menos) media elipse: el terminador, cuyo ancho es
+     * r·|cos(2π·fase)|.
+     */
+    private fun moonPhasePath(path: Path, x: Float, y: Float, r: Float, phase: Float) {
+        path.reset()
+        val waxing = phase < 0.5f
+        val k = cos(2 * PI * phase).toFloat()
+        val rx = r * abs(k)
+        moonOval.set(x - r, y - r, x + r, y + r)
+        terminatorOval.set(x - rx, y - r, x + rx, y + r)
+        // Borde iluminado: de arriba a abajo por la derecha (creciente) o por la izquierda (menguante).
+        path.arcTo(moonOval, -90f, if (waxing) 180f else -180f, true)
+        // Terminador de regreso hacia arriba: se curva a la derecha en creciente cuarto y en menguante gibosa.
+        val bulgeRight = (waxing && k > 0) || (!waxing && k < 0)
+        path.arcTo(terminatorOval, 90f, if (bulgeRight) -180f else 180f)
+        path.close()
     }
 
     private class Star(val x: Float, val y: Float, val r: Float, val phase: Float)
@@ -165,6 +193,20 @@ class SkyView @JvmOverloads constructor(context: Context, attrs: AttributeSet? =
 
     companion object {
         private const val FRAME_MS = 125L
+
+        /** Mes lunar (de luna nueva a luna nueva) y una luna nueva conocida: 6 de enero de 2000, 18:14 UTC. */
+        private const val SYNODIC_DAYS = 29.530588853
+        private const val KNOWN_NEW_MOON_MS = 947_182_440_000L
+
+        /** 0 = luna nueva, 0.25 = cuarto creciente, 0.5 = llena, 0.75 = cuarto menguante. */
+        fun moonPhase(nowMs: Long): Float {
+            val days = (nowMs - KNOWN_NEW_MOON_MS) / 86_400_000.0
+            val f = (days / SYNODIC_DAYS) % 1.0
+            return (if (f < 0) f + 1 else f).toFloat()
+        }
+
+        /** Qué tanto de la cara se ve iluminada (0..1). */
+        fun illumination(phase: Float): Float = ((1 - cos(2 * PI * phase)) / 2).toFloat()
 
         /** Colores (arriba, abajo) por hora del día; entre puntos se mezclan. */
         private val KEYS = listOf(

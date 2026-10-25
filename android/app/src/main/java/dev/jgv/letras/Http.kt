@@ -17,10 +17,13 @@ object Http {
     }
 
     fun get(url: String, headers: Map<String, String> = emptyMap()): Response =
-        request(url, "GET", headers, form = null)
+        request(url, "GET", headers)
 
     fun postForm(url: String, form: Map<String, String>): Response =
-        request(url, "POST", emptyMap(), form)
+        request(url, "POST", emptyMap(), form = form)
+
+    fun postJson(url: String, json: String, headers: Map<String, String> = emptyMap()): Response =
+        request(url, "POST", headers, body = json.toByteArray() to "application/json")
 
     fun bytes(url: String, headers: Map<String, String> = emptyMap()): ByteArray? {
         val c = open(url)
@@ -37,17 +40,23 @@ object Http {
     fun query(params: Map<String, String>): String =
         params.entries.joinToString("&") { "${encode(it.key)}=${encode(it.value)}" }
 
-    private fun request(url: String, method: String, headers: Map<String, String>, form: Map<String, String>?): Response {
+    private fun request(
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        form: Map<String, String>? = null,
+        body: Pair<ByteArray, String>? = form?.let { query(it).toByteArray() to "application/x-www-form-urlencoded" },
+    ): Response {
         val c = open(url)
         try {
             c.requestMethod = method
             headers.forEach { (k, v) -> c.setRequestProperty(k, v) }
-            if (form != null) {
-                val body = query(form).toByteArray()
+            if (body != null) {
+                val (bytes, type) = body
                 c.doOutput = true
-                c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-                c.setFixedLengthStreamingMode(body.size)
-                c.outputStream.use { it.write(body) }
+                c.setRequestProperty("Content-Type", type)
+                c.setFixedLengthStreamingMode(bytes.size)
+                c.outputStream.use { it.write(bytes) }
             }
             val code = c.responseCode
             val stream = if (code >= 400) c.errorStream else c.inputStream

@@ -36,6 +36,8 @@ FILAS = [
     'sniff', 'scratch', 'stretch', 'chew', 'play', 'bark', 'shake', 'tail_chase', 'roll', 'look_up', 'yawn',
     # con música
     'howl', 'listen_lie', 'wiggle',
+    # tocando (no todas las tiene cada perro: PixelLab no siempre dibuja el instrumento)
+    'dj', 'guitar', 'maracas', 'keyboard', 'drums',
 ]
 INDICE = os.path.join(AQUI, '..', 'android', 'app', 'src', 'main', 'res', 'raw', 'perros.json')
 CUADROS = {
@@ -81,13 +83,18 @@ def cuadros(perro, anim):
     return ims
 
 
+def tiene(perro, anim):
+    return os.path.isdir(os.path.join(ORIGEN, perro, anim))
+
+
 def disponibles():
-    """Animaciones que tienen los dos perros (la hoja de ambos usa las mismas filas)."""
-    return [a for a in FILAS if all(os.path.isdir(os.path.join(ORIGEN, p, a)) for p in ('hunter', 'tango'))]
+    """Animaciones que tiene al menos uno de los perros. Las dos hojas usan las mismas filas; la del perro que no la
+    tiene queda vacía (0 cuadros en perros.json) y DogsView no la escoge para él."""
+    return [a for a in FILAS if any(tiene(p, a) for p in ('hunter', 'tango'))]
 
 
 def armar(perro, anims):
-    filas = [cuadros(perro, a) for a in anims]
+    filas = [cuadros(perro, a) if tiene(perro, a) else [] for a in anims]
     columnas = max(len(f) for f in filas)
     # Recorte común: la unión de lo dibujado en todos los cuadros.
     caja = None

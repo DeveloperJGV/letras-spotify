@@ -15,6 +15,10 @@ data class NowPlaying(
     val coverUrl: String?,
     /** elapsedRealtime en que Spotify reportó progressMs; con él se interpola la posición entre consultas. */
     val sampledAt: Long,
+    /** Volumen de Spotify en la PC (0..1), si la fuente lo sabe (Javbots). */
+    val volume: Float? = null,
+    /** Pulsos por minuto, si la fuente lo sabe: Hunter y Tango se mueven al ritmo. */
+    val tempo: Float? = null,
 ) {
     fun positionAt(now: Long): Long =
         if (isPlaying) (progressMs + now - sampledAt).coerceIn(0, durationMs) else progressMs

@@ -15,6 +15,7 @@ import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.View
 import java.io.File
+import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
@@ -84,7 +85,7 @@ class ArtView @JvmOverloads constructor(context: Context, attrs: AttributeSet? =
         invalidate()
     }
 
-    /** El primer cuadro reducido a 16 px de ancho: al agrandarse con suavizado queda un fondo borroso de sus colores. */
+    /** El primer cuadro, chico y desenfocado: al agrandarse con suavizado queda un fondo borroso de sus colores. */
     private fun makeBackdrop(): Bitmap? {
         val source = bitmap ?: movie?.let { m ->
             Bitmap.createBitmap(m.width(), m.height(), Bitmap.Config.ARGB_8888).also { frame ->
@@ -92,9 +93,9 @@ class ArtView @JvmOverloads constructor(context: Context, attrs: AttributeSet? =
                 m.draw(Canvas(frame), 0f, 0f)
             }
         } ?: return null
-        val tiny = Bitmap.createScaledBitmap(source, 16, max(1, 16 * source.height / source.width), true)
+        val soft = Blur.soft(source, w = 32, radius = 2)
         if (source !== bitmap) source.recycle()
-        return tiny
+        return soft
     }
 
     override fun onVisibilityChanged(changedView: View, visibility: Int) {
@@ -127,7 +128,9 @@ class ArtView @JvmOverloads constructor(context: Context, attrs: AttributeSet? =
         val aw = (m?.width() ?: b?.width ?: return).toFloat()
         val ah = (m?.height() ?: b?.height ?: return).toFloat()
 
-        val scale = if (fit && !smoothFill) {
+        // Si la imagen casi tiene la forma de la pantalla, llena aunque esté en "completo": se recorta muy poco.
+        val sameShape = abs(aw / ah - w / h) / (w / h) < SAME_SHAPE
+        val scale = if (fit && !smoothFill && !sameShape) {
             backdrop?.let { bd ->
                 drawCover(canvas, bd, backdropPaint)
                 canvas.drawColor(BACKDROP_DIM)
@@ -179,6 +182,11 @@ class ArtView @JvmOverloads constructor(context: Context, attrs: AttributeSet? =
         private const val BACKDROP_DIM = 0x55000000
         /** Un GIF más pesado que esto no cabe con calma en 1 GB. */
         private const val MAX_BYTES = 25L * 1024 * 1024
+        /** Verticales: más angostas que esto (ancho/alto); horizontales: más anchas que [LANDSCAPE_MIN]. */
+        private const val PORTRAIT_MAX = 0.85f
+        private const val LANDSCAPE_MIN = 1.15f
+        /** Diferencia de proporción con la pantalla que todavía se llena recortando (15 %). */
+        private const val SAME_SHAPE = 0.15f
 
         val FOLDER = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Letras/fondos")
         private val EXTENSIONS = setOf("gif", "jpg", "jpeg", "png", "webp")
@@ -190,6 +198,24 @@ class ArtView @JvmOverloads constructor(context: Context, attrs: AttributeSet? =
         fun available(night: Boolean): List<File> {
             fun list(dir: File) = dir.listFiles { f -> f.isFile && f.extension.lowercase() in EXTENSIONS }.orEmpty().toList()
             return list(FOLDER) + list(File(FOLDER, if (night) "noche" else "dia"))
+        }
+
+        /** Proporción (ancho / alto) de cada archivo ya visto: leerla solo lee el encabezado, pero son decenas. */
+        private val aspects = HashMap<String, Float>()
+
+        private fun aspect(file: File): Float = aspects.getOrPut(file.path + file.lastModified()) {
+            val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(file.path, o)
+            if (o.outWidth > 0 && o.outHeight > 0) o.outWidth.toFloat() / o.outHeight else 1f
+        }
+
+        /**
+         * Las que quedan bien con la pantalla así como está: verticales con la tablet parada, horizontales acostada.
+         * Si no hay ninguna de esa forma, todas (mejor un cuadro en medio que nada).
+         */
+        fun fitting(files: List<File>, portrait: Boolean): List<File> {
+            val good = files.filter { if (portrait) aspect(it) < PORTRAIT_MAX else aspect(it) > LANDSCAPE_MIN }
+            return good.ifEmpty { files }
         }
 
         /** "Kirokaze - Noche de lluvia.gif" → "Arte: Kirokaze · Noche de lluvia". */

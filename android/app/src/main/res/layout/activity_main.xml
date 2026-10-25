@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Capas, de atrás hacia adelante: cielo, fotos, velo para leer, letra, encabezado, reloj, perros. -->
+<!-- Capas, de atrás hacia adelante: cielo, fotos, velo para leer, letra, encabezado, reloj, botones, perros.
+     La usan la app y el protector de pantalla (Pantalla.kt). -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/background">
@@ -31,11 +33,20 @@
         android:alpha="0"
         android:background="@color/scrim" />
 
+    <!-- Piso oscuro detrás de los controles y los perros: se leen sobre cualquier fondo. -->
+    <View
+        android:id="@+id/floor"
+        android:layout_width="match_parent"
+        android:layout_height="160dp"
+        android:layout_gravity="bottom"
+        android:background="@drawable/floor_background" />
+
+    <!-- Entre el encabezado y los controles: los márgenes los pone Pantalla.kt al medir. -->
     <ScrollView
         android:id="@+id/lyricsScroll"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:fadingEdgeLength="96dp"
+        android:fadingEdgeLength="64dp"
         android:requiresFadingEdge="vertical"
         android:scrollbars="none"
         android:visibility="gone">
@@ -57,7 +68,10 @@
         android:background="@drawable/header_background"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:padding="16dp"
+        android:paddingStart="16dp"
+        android:paddingTop="16dp"
+        android:paddingEnd="168dp"
+        android:paddingBottom="16dp"
         android:visibility="gone">
 
         <ImageView
@@ -178,19 +192,127 @@
         android:textColor="@color/aviva_gold"
         android:textSize="13sp" />
 
-    <!-- Crédito del fondo de artista, discreto en la esquina, arriba de los perros. -->
-    <TextView
+    <!-- Crédito del fondo de artista y una flechita discreta para pasar a la siguiente imagen. Todo el renglón se
+         puede tocar. Va en la esquina, arriba de los perros. -->
+    <LinearLayout
         android:id="@+id/credit"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
-        android:layout_marginEnd="12dp"
+        android:layout_marginEnd="6dp"
         android:alpha="0.75"
-        android:shadowColor="#CC000000"
-        android:shadowRadius="4"
-        android:textColor="@color/text_primary"
-        android:textSize="12sp"
-        android:visibility="gone" />
+        android:background="?android:attr/selectableItemBackground"
+        android:contentDescription="@string/next_art"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/creditText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:shadowColor="#CC000000"
+            android:shadowRadius="4"
+            android:textColor="@color/text_primary"
+            android:textSize="12sp" />
+
+        <ImageView
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:importantForAccessibility="no"
+            android:padding="8dp"
+            android:src="@drawable/ic_chevron_right" />
+    </LinearLayout>
+
+    <!-- Botones siempre a la vista: ayuda, fondo, opciones (y salir en el protector). -->
+    <LinearLayout
+        android:id="@+id/buttons"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_margin="12dp"
+        android:orientation="horizontal">
+
+        <ImageButton
+            android:id="@+id/btnHelp"
+            style="@style/RoundButton"
+            android:contentDescription="@string/help_title"
+            android:src="@drawable/ic_help" />
+        <ImageButton
+            android:id="@+id/btnBackground"
+            style="@style/RoundButton"
+            android:contentDescription="@string/bg_button"
+            android:src="@drawable/ic_wallpaper" />
+        <ImageButton
+            android:id="@+id/btnOptions"
+            style="@style/RoundButton"
+            android:contentDescription="@string/opt_title"
+            android:src="@drawable/ic_more" />
+        <ImageButton
+            android:id="@+id/btnExit"
+            style="@style/RoundButton"
+            android:contentDescription="@string/exit"
+            android:src="@drawable/ic_close"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <!-- Controles de Spotify en la PC (por Javbots), arriba de los perros. -->
+    <LinearLayout
+        android:id="@+id/controls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingTop="6dp"
+        android:visibility="gone">
+
+        <ImageButton
+            android:id="@+id/btnPrevious"
+            style="@style/RoundButton"
+            android:contentDescription="@string/previous"
+            android:src="@drawable/ic_previous" />
+        <ImageButton
+            android:id="@+id/playPause"
+            style="@style/RoundButton"
+            android:contentDescription="@string/play_pause"
+            android:src="@drawable/ic_pause"
+            android:layout_width="56dp"
+            android:layout_height="56dp" />
+        <ImageButton
+            android:id="@+id/btnNext"
+            style="@style/RoundButton"
+            android:contentDescription="@string/next"
+            android:src="@drawable/ic_next" />
+
+        <View
+            android:layout_width="24dp"
+            android:layout_height="1dp" />
+
+        <ImageButton
+            android:id="@+id/btnVolumeDown"
+            style="@style/RoundButton"
+            android:contentDescription="@string/volume_down"
+            android:src="@drawable/ic_volume_down" />
+
+        <TextView
+            android:id="@+id/volume"
+            android:layout_width="48dp"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:shadowColor="#CC000000"
+            android:shadowRadius="4"
+            android:textColor="@color/text_primary"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+        <ImageButton
+            android:id="@+id/btnVolumeUp"
+            style="@style/RoundButton"
+            android:contentDescription="@string/volume_up"
+            android:src="@drawable/ic_volume_up" />
+    </LinearLayout>
 
     <dev.jgv.letras.DogsView
         android:id="@+id/dogs"

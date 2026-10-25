@@ -47,6 +47,19 @@ class JavbotsSource(context: Context) {
 
     fun coverHeaders(): Map<String, String> = auth()
 
+    /**
+     * Botones de la tablet: previous, togglePlay, next, volumeUp, volumeDown. Javbots se los pasa a Spotify en la
+     * PC. false = no llegó (la PC no contesta, o Spotify no tiene la extensión conectada).
+     */
+    fun control(action: String): Boolean {
+        val h = host ?: return false
+        return try {
+            Http.postJson("http://$h:$PORT/api/music/control", "{\"action\":\"$action\"}", auth()).isSuccessful
+        } catch (_: IOException) {
+            false
+        }
+    }
+
     private fun auth() = mapOf("Authorization" to "Bearer $TOKEN")
 
     private fun parse(json: JSONObject, h: String, sampledAt: Long): PollResult {
@@ -63,6 +76,8 @@ class JavbotsSource(context: Context) {
             // El parámetro solo distingue una carátula de otra para no reusar la anterior.
             coverUrl = if (t.optBoolean("hasCover")) "http://$h:$PORT/api/music/cover?song=${Http.encode(key)}" else null,
             sampledAt = sampledAt,
+            volume = if (t.has("volume")) t.optDouble("volume").toFloat() else null,
+            tempo = if (t.has("tempo")) t.optDouble("tempo").toFloat() else null,
         )
         val lyrics = json.optJSONObject("lyrics")?.let(::parseLyrics)
             ?: if (json.optBoolean("lyricsLoading")) null else Lyrics.NotFound

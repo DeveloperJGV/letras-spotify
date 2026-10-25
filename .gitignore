@@ -12,3 +12,6 @@ local.properties
 
 # Notas de trabajo (datos personales: IPs, serie de la tablet, pendientes). Solo locales.
 PLAN.md
+
+# Fondos de artistas (arte ajeno: solo en la tablet, nunca al repo)
+fondos/

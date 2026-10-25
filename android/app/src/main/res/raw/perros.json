@@ -25,12 +25,17 @@
   "yawn",
   "howl",
   "listen_lie",
-  "wiggle"
+  "wiggle",
+  "dj",
+  "guitar",
+  "maracas",
+  "keyboard",
+  "drums"
  ],
  "hunter": {
   "celda": [
    41,
-   31
+   33
   ],
   "cuadros": [
    4,
@@ -58,13 +63,18 @@
    9,
    9,
    9,
-   9
+   9,
+   9,
+   9,
+   9,
+   0,
+   0
   ]
  },
  "tango": {
   "celda": [
    44,
-   28
+   30
   ],
   "cuadros": [
    4,
@@ -89,6 +99,11 @@
    9,
    9,
    9,
+   9,
+   9,
+   9,
+   9,
+   0,
    9,
    9,
    9,
