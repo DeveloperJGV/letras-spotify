@@ -14,7 +14,7 @@ paseando abajo. Cuando no suena nada: reloj, sobre el cielo o sobre tus imágene
 - **Botones siempre a la vista** arriba a la derecha: ayuda (?), cambiar fondo y opciones.
 - **Controles de la música** (con Javbots): anterior, pausa, siguiente y volumen del Spotify de la PC, abajo,
   arriba de los perros.
-- **En pausa** más de 20 s pasa al reloj (o a las fotos) con el botón de play a la mano.
+- **En pausa** más de 20 s pasa al reloj con el botón de play a la mano.
 - **Protector de pantalla:** con la tablet cargando, en vez de apagarse muestra esta misma pantalla
   (Ajustes → Pantalla → Protector de pantalla → Letras). Botón ✕ para salir.
 - **Fondos** (botón del cuadrito o doble toque para cambiar):
