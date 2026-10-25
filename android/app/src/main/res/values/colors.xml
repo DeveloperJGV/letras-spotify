@@ -9,5 +9,7 @@
     <color name="accent">#FF1ED760</color>
     <!-- Dorado de la marca AVIVA (el mismo de AVIVA · Fondos Vivos). -->
     <color name="aviva_gold">#FFFFD49A</color>
+    <!-- Batería con poca carga y sin cargar. -->
+    <color name="battery_low">#FFFF8A80</color>
     <color name="scrim">#A60A0A10</color>
 </resources>

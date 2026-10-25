@@ -15,6 +15,7 @@ paseando abajo. Cuando no suena nada: reloj, sobre el cielo o sobre tus imágene
 - **Controles de la música** (con Javbots): anterior, pausa, siguiente y volumen del Spotify de la PC, abajo,
   arriba de los perros.
 - **En pausa** más de 20 s pasa al reloj con el botón de play a la mano.
+- **Batería** bajo el reloj: porcentaje y si está cargando (en rojo si queda poca sin cargar; con la letra, junto al título).
 - **Protector de pantalla:** con la tablet cargando, en vez de apagarse muestra esta misma pantalla
   (Ajustes → Pantalla → Protector de pantalla → Letras). Botón ✕ para salir.
 - **Fondos** (botón del cuadrito o doble toque para cambiar):
@@ -94,6 +95,34 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Sin AndroidX ni librerías de red a propósito: la tablet es API 22 y tiene 1 GB. El APK pesa ~1.5 MB.
+
+## Cómo está hecho el código
+
+Android 5.1 sin AndroidX (no hay ViewModel), así que la arquitectura es **MVI** a mano:
+
+```
+acciones ──► reduce(estado, acción) ──► estado nuevo + efectos
+(consulta, tiempo,      ScreenState.kt         │          │
+ batería, botones)      (Kotlin puro)          ▼          ▼
+                                        Pantalla.render   Pantalla.perform
+                                        (dibuja lo que    (buscar letra, portada,
+                                         cambió)           imagen, botón a la PC)
+```
+
+| Archivo | Qué hace |
+| --- | --- |
+| `ScreenState.kt` | Estado, acciones, efectos y `reduce`. Sin Android: se prueba en la PC. |
+| `Pantalla.kt` | Vistas: manda acciones, dibuja el estado y hace los efectos. La usan la app y el protector. |
+| `MainActivity.kt` / `Protector.kt` | La app (inicio de sesión, menús) y el protector de pantalla. |
+| `JavbotsSource.kt`, `SpotifyPlayer.kt`, `Lyrics.kt` | De dónde sale la música y la letra. |
+| `SkyView`, `DogsView`, `ArtView` | Vistas que se dibujan solas (cielo y luna, Hunter y Tango, imágenes). |
+
+Pruebas (en la PC, sin tablet):
+
+```bash
+cd android
+./gradlew :app:testDebugUnitTest
+```
 
 ## Créditos
 

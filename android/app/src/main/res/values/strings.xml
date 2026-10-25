@@ -39,6 +39,9 @@
     <string name="volume_percent">%1$d%%</string>
     <string name="control_failed">No llegó a Spotify. ¿Está abierto en la PC con la extensión de Javbots?</string>
     <string name="exit">Salir</string>
+    <string name="battery_percent">%1$d%%</string>
+    <string name="battery_charging">%1$d%% · cargando</string>
+    <string name="battery_full">100%% · cargada</string>
     <string name="help_title">Cómo se usa</string>
     <string name="help_screensaver">Protector de pantalla</string>
     <string name="help_text">Botones de arriba: ? esta ayuda · cuadro: cambiar el fondo · tres puntos: opciones.\n\nCon música, abajo: anterior, pausa, siguiente y volumen de Spotify en la PC.\n\nDoble toque en cualquier parte: cambiar el fondo. Mantener presionado: opciones. Si deslizas la letra con el dedo, se queda ahí 5 segundos.\n\nFondos: el cielo, o una carpeta de imágenes. Cada carpeta dentro de Pictures/Letras/fondos es una opción con su nombre (Lofi, Boda, Hunter y Tango…). Adentro, sus carpetas dia y noche son solo para esa hora. Si el archivo se llama «Artista - Título», sale el crédito. La flechita de abajo pasa a la siguiente imagen.\n\nProtector de pantalla: con la tablet cargando, en vez de apagarse muestra esta pantalla. Se elige en Ajustes → Pantalla → Protector de pantalla → Letras.\n\nHunter y Tango tienen un secreto. Tócalos.</string>

@@ -2,11 +2,13 @@ package dev.jgv.letras
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
+import android.content.IntentFilter
 import android.graphics.BitmapFactory
 import android.graphics.Typeface
+import android.os.BatteryManager
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.TypedValue
@@ -34,8 +36,12 @@ import kotlinx.coroutines.withContext
 import java.io.IOException
 
 /**
- * Todo lo que se ve: la letra, los fondos, Hunter y Tango, el reloj y los botones. Vive aparte de la Activity para
- * usarse igual en la app ([MainActivity]) y en el protector de pantalla ([Protector]).
+ * Todo lo que se ve: la letra, los fondos, Hunter y Tango, el reloj, la batería y los botones. Vive aparte de la
+ * Activity para usarse igual en la app ([MainActivity]) y en el protector de pantalla ([Protector]).
+ *
+ * MVI: la lógica está en ScreenState.kt ([reduce]). Aquí se le pasan acciones ([dispatch]: lo que contesta la
+ * fuente, el paso del tiempo, la batería, los botones), se dibuja el estado que regresa ([render]) y se hacen sus
+ * efectos ([perform]: buscar la letra, bajar la portada, cambiar la imagen, mandar un botón a la PC).
  */
 class Pantalla(private val context: Context, root: View, private val host: Host) {
 
@@ -66,49 +72,36 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private val cover: ImageView = root.findViewById(R.id.cover)
     private val title: TextView = root.findViewById(R.id.title)
     private val artist: TextView = root.findViewById(R.id.artist)
-    private val state: TextView = root.findViewById(R.id.state)
+    private val trackState: TextView = root.findViewById(R.id.state)
     private val lyricsScroll: ScrollView = root.findViewById(R.id.lyricsScroll)
     private val lyricsContainer: LinearLayout = root.findViewById(R.id.lyricsContainer)
     private val idle: LinearLayout = root.findViewById(R.id.idle)
     private val clock: TextClock = root.findViewById(R.id.clock)
     private val message: TextView = root.findViewById(R.id.message)
+    private val battery: TextView = root.findViewById(R.id.battery)
     private val connect: Button = root.findViewById(R.id.connect)
     private val connectHint: View = root.findViewById(R.id.connectHint)
     private val controls: View = root.findViewById(R.id.controls)
     private val playPause: ImageButton = root.findViewById(R.id.playPause)
     private val volume: TextView = root.findViewById(R.id.volume)
 
+    private var state = loadPrefs()
+
     private var pollJob: Job? = null
     private var tickJob: Job? = null
     private var lyricsJob: Job? = null
     private var coverJob: Job? = null
+    private var imageJob: Job? = null
 
-    private var track: NowPlaying? = null
-    private var lyrics: Lyrics? = null
-    private var lyricsForId: String? = null
-    private var coverForUrl: String? = null
-    private var currentIndex = -1
+    // Lo que es solo de las vistas (no del estado): qué imagen toca, si ya hay una puesta y el dedo en la letra.
+    private var imageIndex = -1
+    private var imageShown = false
     private var lastTouchAt = 0L
-    /** Desde cuándo está en pausa la canción (para pasar al reloj si sigue así). */
-    private var pausedSince: Long? = null
-    /** Lo que se está mostrando: la letra o la pantalla de espera (reloj o fotos). */
-    private var showingLyrics = false
-    /** Viene de la fuente y se puede controlar (Javbots): anterior, pausa, siguiente y volumen. */
-    private var canControl = false
+    private var highlighted = -1
 
-    /**
-     * El fondo: el cielo (null) o una carpeta de imágenes de Pictures/Letras/fondos (su nombre: "Lofi", "Boda"…).
-     * Se ve igual con música y sin música; sin música el reloj se hace chico en la esquina.
-     */
-    private var folder: String? = null
-    private var artIndex = -1
-    private var lastArtChangeAt = 0L
-    /** El arte que está puesto, para no recargarlo al ir y venir entre la letra y el reloj. */
-    private var artShown = false
-    private var artFit = true
-    private var artEveryMin = 0
-    private var scrimLevel = 1
-    private var artJob: Job? = null
+    private val batteryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, intent: Intent) = onBattery(intent)
+    }
 
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDoubleTap(e: MotionEvent): Boolean {
@@ -131,20 +124,13 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             visibility = if (host.isScreensaver) View.VISIBLE else View.GONE
             setOnClickListener { host.exit() }
         }
-        credit.setOnClickListener { nextArt() }
-        root.findViewById<View>(R.id.btnPrevious).setOnClickListener { control("previous") }
-        playPause.setOnClickListener { control("togglePlay") }
-        root.findViewById<View>(R.id.btnNext).setOnClickListener { control("next") }
-        root.findViewById<View>(R.id.btnVolumeDown).setOnClickListener { control("volumeDown") }
-        root.findViewById<View>(R.id.btnVolumeUp).setOnClickListener { control("volumeUp") }
+        credit.setOnClickListener { dispatch(Action.NextImage(SystemClock.elapsedRealtime())) }
+        root.findViewById<View>(R.id.btnPrevious).setOnClickListener { dispatch(Action.Control("previous")) }
+        playPause.setOnClickListener { dispatch(Action.Control("togglePlay")) }
+        root.findViewById<View>(R.id.btnNext).setOnClickListener { dispatch(Action.Control("next")) }
+        root.findViewById<View>(R.id.btnVolumeDown).setOnClickListener { dispatch(Action.Control("volumeDown")) }
+        root.findViewById<View>(R.id.btnVolumeUp).setOnClickListener { dispatch(Action.Control("volumeUp")) }
 
-        val p = prefs()
-        // Primera vez: la primera carpeta que haya (si no hay, el cielo).
-        folder = if (p.contains(KEY_FOLDER)) p.getString(KEY_FOLDER, "")?.ifEmpty { null } else ArtView.folders().firstOrNull()
-        artFit = p.getBoolean(KEY_ART_FIT, true)
-        artEveryMin = p.getInt(KEY_ART_EVERY, 0)
-        scrimLevel = p.getInt(KEY_SCRIM, 1)
-        art.fit = artFit
         // Si la persona desliza la letra a mano, el auto-scroll espera unos segundos.
         lyricsScroll.setOnTouchListener { _, _ -> lastTouchAt = SystemClock.elapsedRealtime(); false }
         // La letra vive entre el encabezado y la parte de abajo (controles y perros): nada se encima.
@@ -155,17 +141,72 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         dogs.addOnLayoutChangeListener(relayout)
         controls.addOnLayoutChangeListener(relayout)
         lyricsScroll.addOnLayoutChangeListener(relayout)
+        render(null, state)
+    }
+
+    // ---- MVI ----
+
+    private fun dispatch(action: Action) {
+        val old = state
+        val result = reduce(old, action)
+        state = result.state
+        render(old, state)
+        result.effects.forEach(::perform)
+    }
+
+    /** Pone en las vistas lo que cambió entre [old] y [s] (todo, si [old] es null). */
+    private fun render(old: ScreenState?, s: ScreenState) {
+        /** Cambió lo que da [part] (la primera vez, todo cuenta como cambio). */
+        fun changed(vararg part: (ScreenState) -> Any?) = old == null || part.any { it(old) != it(s) }
+
+        if (changed({ it.waiting })) renderWaiting(s)
+        if (changed({ it.track })) renderHeader(s)
+        if (changed({ it.showControls }, { it.track?.isPlaying }, { it.track?.volume })) renderControls(s)
+        // La letra se compara por identidad: el reducer solo la cambia cuando llega otra.
+        if (changed({ it.lyricsForId }, { it.lyricsFailed }) || old?.lyrics !== s.lyrics) {
+            renderLyrics(s)
+        } else if (changed({ it.currentLine })) {
+            highlight(s.currentLine)
+        }
+        if (changed({ it.fitImage })) art.fit = s.fitImage
+        if (changed({ it.scrimLevel }, { it.showingLyrics })) {
+            // El velo solo va con la letra: que se luzca la imagen sin perder lo que se lee.
+            scrim.animate().alpha(if (s.showingLyrics) SCRIM_ALPHAS[s.scrimLevel] else 0f).setDuration(600).start()
+        }
+        if (changed({ it.battery }, { it.showingLyrics })) renderBattery(s)
+        if (changed({ it.folder }, { it.waiting })) layoutIdleClock(s)
+        dogs.mood = s.dogMood
+    }
+
+    private fun perform(effect: Effect) {
+        when (effect) {
+            is Effect.FindLyrics -> findLyrics(effect.track)
+            is Effect.LoadCover -> loadCover(effect.url, effect.headers)
+            Effect.NextImage -> nextImage()
+            Effect.HideImage -> hideImage()
+            Effect.Celebrate -> dogs.celebrate()
+            is Effect.SendControl -> sendControl(effect.command)
+            Effect.SavePrefs -> savePrefs()
+            Effect.AnnounceBackground -> toast(context.getString(R.string.bg_now, backgroundName(state.folder)))
+        }
     }
 
     // ---- Ciclo de vida (lo llaman la Activity o el protector) ----
 
     fun start() {
-        applyBackground(newArt = !artShown)
+        if (state.folder != null && !imageShown) nextImage()
+        // La batería llega al registrarse (es un aviso "pegajoso") y luego cada que cambia.
+        context.registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))?.let(::onBattery)
         refresh()
     }
 
     fun stop() {
         stopLoops()
+        try {
+            context.unregisterReceiver(batteryReceiver)
+        } catch (_: IllegalArgumentException) {
+            // No estaba registrado.
+        }
     }
 
     fun destroy() {
@@ -184,10 +225,15 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             sky.forcedMoonPhase = moonPhase
             dogs.fullMoon = SkyView.illumination(moonPhase) > FULL_MOON
         }
-        if (background != null) {
-            folder = background.ifEmpty { null }
-            applyBackground(newArt = true)
-        }
+        if (background != null) dispatch(Action.BackgroundChosen(background.ifEmpty { null }, SystemClock.elapsedRealtime()))
+    }
+
+    private fun onBattery(intent: Intent) {
+        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
+        if (level < 0 || scale <= 0) return
+        val plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
+        dispatch(Action.BatteryChanged(Battery(level * 100 / scale, charging = plugged)))
     }
 
     // ---- Sesión ----
@@ -196,18 +242,14 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     fun refresh(loginError: String? = null) {
         when {
             javbots.isConfigured || auth.isLoggedIn -> startLoops()
-            !auth.hasClientId -> showIdle(context.getString(R.string.missing_config))
+            !auth.hasClientId -> dispatch(Action.NeedsSetup(Waiting.MissingConfig))
             else -> showLogin(loginError)
         }
     }
 
     fun showLogin(error: String? = null) {
         stopLoops()
-        track = null
-        showIdle(
-            error?.let { context.getString(R.string.login_failed, it) }.orEmpty(),
-            withConnect = !host.isScreensaver,
-        )
+        dispatch(Action.NeedsSetup(Waiting.Login(error)))
     }
 
     /**
@@ -216,15 +258,13 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
      */
     fun startDemo(seconds: Int) {
         stopLoops()
-        onTrack(
-            PollResult.Playing(
-                NowPlaying(
-                    id = "demo", title = "De Música Ligera", artists = listOf("Soda Stereo"),
-                    album = "Canción Animal", durationMs = 212_000, progressMs = seconds * 1000L,
-                    isPlaying = true, coverUrl = null, sampledAt = SystemClock.elapsedRealtime(), tempo = 128f,
-                )
-            )
+        val now = SystemClock.elapsedRealtime()
+        val demo = NowPlaying(
+            id = "demo", title = "De Música Ligera", artists = listOf("Soda Stereo"), album = "Canción Animal",
+            durationMs = 212_000, progressMs = seconds * 1000L, isPlaying = true, coverUrl = null, sampledAt = now,
+            tempo = 128f,
         )
+        dispatch(Action.Polled(PollResult.Playing(demo), now))
         startTicker()
     }
 
@@ -273,20 +313,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private suspend fun pollLoop() {
         while (scope.isActive) {
             val (result, wait) = withContext(Dispatchers.IO) { pollOnce() }
-            when (result) {
-                is PollResult.Playing -> onTrack(result)
-                is PollResult.Idle ->
-                    onNothingPlaying(if (result.notASong) R.string.not_a_song else R.string.nothing_playing)
-                PollResult.NeedsLogin -> {
-                    showLogin()
-                    return
-                }
-                is PollResult.RateLimited -> Unit
-                // Con una canción en pantalla se sigue interpolando; solo se avisa si no hay nada.
-                PollResult.NetworkError -> if (track == null) {
-                    showIdle(context.getString(if (javbots.isConfigured) R.string.looking_for_pc else R.string.network_error))
-                }
-            }
+            dispatch(Action.Polled(result, SystemClock.elapsedRealtime(), viaJavbots = javbots.isConfigured))
+            if (result == PollResult.NeedsLogin) return
             delay(wait)
         }
     }
@@ -298,79 +326,30 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         return (remaining + 500).coerceIn(1_000, normal)
     }
 
-    private fun onTrack(result: PollResult.Playing) {
-        val t = result.track
-        track = t
-        canControl = result.sourceHandlesLyrics
-        updateControls(t)
-
-        // Pausada un rato: se va al reloj (o a las fotos) con el botón de play a la mano.
+    /** El tiempo pasa: el estado (renglón, pausa larga, cambio de imagen) y lo que se mueve solo en las vistas. */
+    private fun tick() {
         val now = SystemClock.elapsedRealtime()
-        pausedSince = if (t.isPlaying) null else pausedSince ?: now
-        val pausedLong = pausedSince?.let { now - it > PAUSE_TO_IDLE_MS } == true
-
-        title.text = t.title
-        artist.text = t.artists.joinToString(", ")
-        state.text = if (t.isPlaying) "" else context.getString(R.string.paused)
-
-        if (result.sourceHandlesLyrics) {
-            // Javbots ya buscó (Spotify, si no LRCLIB). null = todavía buscando.
-            if (t.id != lyricsForId) startLyrics(t)
-            if (lyrics == null && result.lyrics != null) setLyrics(result.lyrics)
-        } else if (t.id != lyricsForId) {
-            startLyrics(t)
-            loadLyrics(t)
+        dispatch(Action.Tick(now))
+        dogs.night = SkyView.darkness(sky.forcedHour ?: SkyView.currentHour())
+        if (sky.forcedMoonPhase == null) {
+            dogs.fullMoon = SkyView.illumination(SkyView.moonPhase(System.currentTimeMillis())) > FULL_MOON
         }
-        if (t.coverUrl != coverForUrl) loadCover(t.coverUrl, result.coverHeaders)
-
-        if (pausedLong) {
-            val text = context.getString(R.string.paused_song, t.title, t.artists.joinToString(", "))
-            if (showingLyrics || message.text.toString() != text) showIdle(text)
-        } else {
-            showLyricsScreen()
+        val s = state
+        val t = s.track
+        // Al ritmo: cuántos pulsos van de la canción (se pausa con ella).
+        dogs.beat = t?.tempo?.takeIf { t.isPlaying && s.showingLyrics }?.let { t.positionAt(now) * it / 60_000.0 }
+        // Letra sin tiempos por renglón: se avanza en proporción a lo que va de la canción.
+        if (t != null && s.showingLyrics && s.lyrics is Lyrics.Plain && t.isPlaying && t.durationMs > 0 && !recentlyTouched(now)) {
+            val range = lyricsContainer.height - lyricsScroll.height
+            val target = (range * t.positionAt(now) / t.durationMs).toInt()
+            if (kotlin.math.abs(target - lyricsScroll.scrollY) > dp(4)) lyricsScroll.smoothScrollTo(0, target)
         }
-        updateDogs()
     }
 
-    private fun showLyricsScreen() {
-        val wasShowing = showingLyrics
-        showingLyrics = true
-        idle.visibility = View.GONE
-        brand.visibility = View.GONE
-        header.visibility = View.VISIBLE
-        lyricsScroll.visibility = View.VISIBLE
-        // Sobre el arte el velo es más ligero: que se luzca el fondo sin perder la letra.
-        scrim.animate().alpha(scrimAlpha()).setDuration(600).start()
-        if (!wasShowing) layoutIdleClock(withConnect = false)
-    }
+    // ---- Efectos ----
 
-    private fun onNothingPlaying(messageRes: Int) {
-        track = null
-        lyricsForId = null
-        lyrics = null
-        pausedSince = null
-        updateControls(null)
-        showIdle(context.getString(messageRes))
-    }
-
-    private fun startLyrics(t: NowPlaying) {
-        lyricsForId = t.id
-        lyrics = null
-        currentIndex = -1
+    private fun findLyrics(t: NowPlaying) {
         lyricsJob?.cancel()
-        renderMessage(context.getString(R.string.searching))
-        if (folder != null && artEveryMin == 0) nextArt()
-    }
-
-    private fun setLyrics(l: Lyrics) {
-        lyrics = l
-        render(l)
-        updateDogs()
-        // Ya hay letra: Hunter y Tango lo festejan.
-        dogs.celebrate()
-    }
-
-    private fun loadLyrics(t: NowPlaying) {
         lyricsJob = scope.launch {
             val found = try {
                 withContext(Dispatchers.IO) { LrcLib.find(t) }
@@ -379,19 +358,11 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             } catch (_: org.json.JSONException) {
                 null
             }
-            if (track?.id != t.id) return@launch
-            if (found == null) {
-                // Falló la red: se reintenta en la siguiente consulta.
-                lyricsForId = null
-                renderMessage(context.getString(R.string.network_error))
-            } else {
-                setLyrics(found)
-            }
+            dispatch(Action.LyricsLoaded(t.id, found))
         }
     }
 
     private fun loadCover(url: String?, headers: Map<String, String>) {
-        coverForUrl = url
         coverJob?.cancel()
         cover.setImageDrawable(null)
         cover.visibility = if (url == null) View.GONE else View.VISIBLE
@@ -404,60 +375,148 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
                     null
                 }
             }
-            if (coverForUrl != url) return@launch
-            cover.setImageBitmap(bitmap)
+            if (state.coverUrl == url) cover.setImageBitmap(bitmap)
         }
-    }
-
-    /** Hunter y Tango: corren mientras se busca la letra, pasean y tocan si suena, descansan si no. */
-    private fun updateDogs() {
-        val t = track
-        dogs.mood = when {
-            t == null || !showingLyrics -> DogsView.Mood.REST
-            lyrics == null -> DogsView.Mood.RUN
-            t.isPlaying -> DogsView.Mood.STROLL
-            else -> DogsView.Mood.REST
-        }
-    }
-
-    // ---- Controles de la música ----
-
-    private fun updateControls(t: NowPlaying?) {
-        val shown = if (t != null && canControl) View.VISIBLE else View.GONE
-        if (controls.visibility != shown) {
-            controls.visibility = shown
-            // Ocultos no vuelven a acomodarse solos: la letra recupera su espacio aquí.
-            controls.post { layoutLyricsArea() }
-        }
-        playPause.setImageResource(if (t?.isPlaying == true) R.drawable.ic_pause else R.drawable.ic_play)
-        val v = t?.volume
-        volume.visibility = if (v == null) View.GONE else View.VISIBLE
-        if (v != null) volume.text = context.getString(R.string.volume_percent, (v * 100).toInt())
     }
 
     /** Manda el botón a Spotify en la PC (por Javbots) y vuelve a preguntar en seguida para verlo reflejado. */
-    private fun control(action: String) {
+    private fun sendControl(command: String) {
         scope.launch {
-            val ok = withContext(Dispatchers.IO) { javbots.control(action) }
+            val ok = withContext(Dispatchers.IO) { javbots.control(command) }
             if (!ok) {
                 toast(context.getString(R.string.control_failed))
                 return@launch
             }
             delay(CONTROL_REFRESH_MS)
             val (result, _) = withContext(Dispatchers.IO) { pollOnce() }
-            if (result is PollResult.Playing) onTrack(result)
+            dispatch(Action.Polled(result, SystemClock.elapsedRealtime(), viaJavbots = javbots.isConfigured))
         }
     }
 
-    // ---- Dibujo de la letra ----
+    private fun hideImage() {
+        imageJob?.cancel()
+        art.visibility = View.GONE
+        art.show(null)
+        imageShown = false
+        credit.visibility = View.GONE
+    }
 
-    private fun render(l: Lyrics) {
-        when (l) {
+    private fun night() = SkyView.darkness(sky.forcedHour ?: SkyView.currentHour()) > 0.5f
+
+    /** Otra imagen de la carpeta (al azar, sin repetir la anterior), con su crédito si lo trae el nombre. */
+    private fun nextImage() {
+        val folder = state.folder ?: return
+        imageJob?.cancel()
+        imageJob = scope.launch {
+            // El ArtView puede estar oculto (mide 0): se pregunta a la pantalla.
+            val portrait = context.resources.displayMetrics.let { it.heightPixels > it.widthPixels }
+            val files = withContext(Dispatchers.IO) {
+                ArtView.fitting(ArtView.available(folder, night()), portrait).sortedBy { it.name }
+            }
+            if (files.isEmpty()) {
+                hideImage()
+                return@launch
+            }
+            imageIndex = if (files.size == 1) 0 else (imageIndex + 1 + (Math.random() * (files.size - 1)).toInt()) % files.size
+            val file = files[imageIndex]
+            val decoded = withContext(Dispatchers.IO) { art.decode(file) } ?: return@launch
+            if (state.folder != folder) return@launch
+            art.animate().alpha(0f).setDuration(if (art.visibility == View.VISIBLE) 400 else 0).withEndAction {
+                art.show(decoded)
+                imageShown = true
+                art.visibility = View.VISIBLE
+                art.animate().alpha(1f).setDuration(600).start()
+            }.start()
+            // Fotos sin "Artista - Título" en el nombre: sin crédito, solo la flechita.
+            val text = ArtView.credit(file)
+            creditText.text = text
+            creditText.visibility = if (text.isEmpty()) View.GONE else View.VISIBLE
+            credit.visibility = View.VISIBLE
+        }
+    }
+
+    // ---- Dibujo ----
+
+    /** La letra, o el reloj con el porqué (nada suena, en pausa, sin red, iniciar sesión…). */
+    private fun renderWaiting(s: ScreenState) {
+        val w = s.waiting
+        val showLyrics = w == null
+        header.visibility = if (showLyrics) View.VISIBLE else View.GONE
+        lyricsScroll.visibility = if (showLyrics) View.VISIBLE else View.GONE
+        idle.visibility = if (showLyrics) View.GONE else View.VISIBLE
+        brand.visibility = idle.visibility
+        if (w == null) return
+        val text = when (w) {
+            Waiting.NothingPlaying -> context.getString(R.string.nothing_playing)
+            Waiting.NotASong -> context.getString(R.string.not_a_song)
+            Waiting.LookingForPc -> context.getString(R.string.looking_for_pc)
+            Waiting.NetworkError -> context.getString(R.string.network_error)
+            Waiting.MissingConfig -> context.getString(R.string.missing_config)
+            is Waiting.Login -> w.error?.let { context.getString(R.string.login_failed, it) }.orEmpty()
+            is Waiting.Paused -> context.getString(R.string.paused_song, w.title, w.artist)
+        }
+        message.text = text
+        message.visibility = if (text.isEmpty()) View.GONE else View.VISIBLE
+        connect.visibility = if (w is Waiting.Login && !host.isScreensaver) View.VISIBLE else View.GONE
+        connectHint.visibility = connect.visibility
+    }
+
+    private fun renderHeader(s: ScreenState) {
+        val t = s.track ?: return
+        title.text = t.title
+        artist.text = t.artists.joinToString(", ")
+        renderTrackState(s)
+    }
+
+    /** A la derecha del título: "En pausa", o la batería si queda poca. */
+    private fun renderTrackState(s: ScreenState) {
+        val b = s.battery
+        trackState.text = when {
+            s.track?.isPlaying == false -> context.getString(R.string.paused)
+            b != null && b.low -> context.getString(R.string.battery_percent, b.percent)
+            else -> ""
+        }
+    }
+
+    private fun renderControls(s: ScreenState) {
+        val shown = if (s.showControls) View.VISIBLE else View.GONE
+        if (controls.visibility != shown) {
+            controls.visibility = shown
+            // Ocultos no vuelven a acomodarse solos: la letra recupera su espacio aquí.
+            controls.post { layoutLyricsArea() }
+        }
+        playPause.setImageResource(if (s.track?.isPlaying == true) R.drawable.ic_pause else R.drawable.ic_play)
+        val v = s.track?.volume
+        volume.visibility = if (v == null) View.GONE else View.VISIBLE
+        if (v != null) volume.text = context.getString(R.string.volume_percent, (v * 100).toInt())
+    }
+
+    /** Batería en el reloj: porcentaje y si carga; en rojo si queda poca sin cargar. */
+    private fun renderBattery(s: ScreenState) {
+        renderTrackState(s)
+        val b = s.battery
+        battery.visibility = if (b == null) View.GONE else View.VISIBLE
+        if (b == null) return
+        battery.text = when {
+            b.charging && b.percent >= 100 -> context.getString(R.string.battery_full)
+            b.charging -> context.getString(R.string.battery_charging, b.percent)
+            else -> context.getString(R.string.battery_percent, b.percent)
+        }
+        battery.setCompoundDrawablesWithIntrinsicBounds(
+            if (b.charging) R.drawable.ic_battery_charging else R.drawable.ic_battery, 0, 0, 0,
+        )
+        battery.setTextColor(color(if (b.low) R.color.battery_low else R.color.text_primary))
+    }
+
+    private fun renderLyrics(s: ScreenState) {
+        when (val l = s.lyrics) {
+            null -> renderMessage(context.getString(if (s.lyricsFailed) R.string.network_error else R.string.searching))
             is Lyrics.Synced -> renderLines(l.lines.map { it.text.ifBlank { "♪" } }, synced = true)
             is Lyrics.Plain -> renderLines(l.lines, synced = false)
             Lyrics.Instrumental -> renderMessage(context.getString(R.string.instrumental))
             Lyrics.NotFound -> renderMessage(context.getString(R.string.no_lyrics))
         }
+        if (s.lyrics is Lyrics.Synced && s.currentLine >= 0) highlight(s.currentLine)
     }
 
     private fun renderLines(lines: List<String>, synced: Boolean) {
@@ -466,7 +525,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         lines.forEach { text ->
             lyricsContainer.addView(lineView(text, color, if (synced) 28f else 24f))
         }
-        currentIndex = -1
+        highlighted = -1
         lyricsScroll.scrollTo(0, 0)
     }
 
@@ -475,6 +534,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         lyricsContainer.addView(lineView(text, color(R.color.text_secondary), 22f).apply {
             gravity = Gravity.CENTER_HORIZONTAL
         })
+        highlighted = -1
         lyricsScroll.scrollTo(0, 0)
     }
 
@@ -491,37 +551,9 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
     }
 
-    private fun tick() {
-        val hour = sky.forcedHour ?: SkyView.currentHour()
-        dogs.night = SkyView.darkness(hour)
-        if (sky.forcedMoonPhase == null) {
-            dogs.fullMoon = SkyView.illumination(SkyView.moonPhase(System.currentTimeMillis())) > FULL_MOON
-        }
-        val now = SystemClock.elapsedRealtime()
-        // Con música: con cada canción o cada N minutos. Sin música: cada pocos minutos, como marco de fotos.
-        val every = if (showingLyrics) artEveryMin * 60_000L else IDLE_ART_MS
-        if (folder != null && every > 0 && now - lastArtChangeAt > every) nextArt()
-        val t = track
-        // Al ritmo: cuántos pulsos van de la canción (se pausa con ella).
-        dogs.beat = t?.tempo?.takeIf { t.isPlaying && showingLyrics }?.let { t.positionAt(now) * it / 60_000.0 }
-        if (t == null || !showingLyrics) return
-        when (val l = lyrics) {
-            is Lyrics.Synced -> {
-                val index = l.indexAt(t.positionAt(now) + LEAD_MS)
-                if (index != currentIndex) highlight(index)
-            }
-            is Lyrics.Plain -> if (t.isPlaying && t.durationMs > 0 && !recentlyTouched(now)) {
-                // Sin tiempos por renglón: se avanza en proporción a lo que va de la canción.
-                val range = lyricsContainer.height - lyricsScroll.height
-                val target = (range * t.positionAt(now) / t.durationMs).toInt()
-                if (kotlin.math.abs(target - lyricsScroll.scrollY) > dp(4)) lyricsScroll.smoothScrollTo(0, target)
-            }
-            else -> Unit
-        }
-    }
-
     private fun highlight(index: Int) {
-        currentIndex = index
+        if (index == highlighted || state.lyrics !is Lyrics.Synced) return
+        highlighted = index
         val past = color(R.color.line_past)
         val future = color(R.color.line_future)
         val current = color(R.color.line_current)
@@ -568,6 +600,14 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
 
     private fun bottomAreaHeight() = dogs.height + (if (controls.visibility == View.VISIBLE) controls.height else 0)
 
+    /** Sobre el cielo, reloj grande al centro; sobre imágenes, chico en la esquina para que se vean. */
+    private fun layoutIdleClock(s: ScreenState) {
+        val small = s.folder != null && s.waiting !is Waiting.Login
+        idle.gravity = if (small) Gravity.BOTTOM or Gravity.START else Gravity.CENTER
+        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (small) 56f else 96f)
+        idle.setPadding(dp(32), dp(32), dp(32), if (small) bottomAreaHeight() + dp(36) else dp(32))
+    }
+
     private fun recentlyTouched(now: Long) = now - lastTouchAt < TOUCH_PAUSE_MS
 
     private fun overDogs(e: MotionEvent): Boolean {
@@ -585,93 +625,11 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     fun cycleBackground() {
         val all = backgrounds()
         if (all.size == 1) toast(context.getString(R.string.bg_no_folders))
-        setBackground(all[(all.indexOf(folder) + 1) % all.size])
-    }
-
-    private fun setBackground(name: String?) {
-        folder = name
-        prefs().edit().putString(KEY_FOLDER, name.orEmpty()).apply()
-        toast(context.getString(R.string.bg_now, backgroundName(name)))
-        applyBackground(newArt = true)
-        layoutIdleClock(withConnect = connect.visibility == View.VISIBLE)
+        dispatch(Action.BackgroundChosen(all[(all.indexOf(state.folder) + 1) % all.size], SystemClock.elapsedRealtime()))
     }
 
     private fun backgroundName(name: String?) =
         if (name == null) context.getString(R.string.bg_sky) else context.getString(R.string.bg_folder, name, ArtView.count(name))
-
-    /** Velo detrás de la letra: suave, medio o fuerte. */
-    private fun scrimAlpha() = SCRIM_LEVELS[scrimLevel.coerceIn(0, SCRIM_LEVELS.size - 1)]
-
-    private fun hideArt() {
-        artJob?.cancel()
-        art.visibility = View.GONE
-        art.show(null)
-        artShown = false
-        credit.visibility = View.GONE
-    }
-
-    private fun applyBackground(newArt: Boolean) {
-        if (folder == null) hideArt() else if (newArt || !artShown) nextArt()
-    }
-
-    private fun night() = SkyView.darkness(sky.forcedHour ?: SkyView.currentHour()) > 0.5f
-
-    private fun artFiles() = folder?.let { ArtView.available(it, night()) }.orEmpty()
-
-    /** Otra imagen de la carpeta (al azar, sin repetir la anterior), con su crédito si lo trae el nombre. */
-    fun nextArt() {
-        artJob?.cancel()
-        artJob = scope.launch {
-            // El ArtView puede estar oculto (mide 0): se pregunta a la pantalla.
-            val portrait = context.resources.displayMetrics.let { it.heightPixels > it.widthPixels }
-            val files = withContext(Dispatchers.IO) { ArtView.fitting(artFiles(), portrait).sortedBy { it.name } }
-            if (files.isEmpty()) {
-                hideArt()
-                return@launch
-            }
-            lastArtChangeAt = SystemClock.elapsedRealtime()
-            artIndex = if (files.size == 1) 0 else (artIndex + 1 + (Math.random() * (files.size - 1)).toInt()) % files.size
-            val file = files[artIndex]
-            val decoded = withContext(Dispatchers.IO) { art.decode(file) } ?: return@launch
-            if (folder == null) return@launch
-            art.animate().alpha(0f).setDuration(if (art.visibility == View.VISIBLE) 400 else 0).withEndAction {
-                art.show(decoded)
-                artShown = true
-                art.visibility = View.VISIBLE
-                art.animate().alpha(1f).setDuration(600).start()
-            }.start()
-            // Fotos sin "Artista - Título" en el nombre: sin crédito, solo la flechita.
-            val text = ArtView.credit(file)
-            creditText.text = text
-            creditText.visibility = if (text.isEmpty()) View.GONE else View.VISIBLE
-            credit.visibility = View.VISIBLE
-        }
-    }
-
-    // ---- Pantalla de espera ----
-
-    private fun showIdle(text: String, withConnect: Boolean = false) {
-        showingLyrics = false
-        header.visibility = View.GONE
-        lyricsScroll.visibility = View.GONE
-        scrim.animate().alpha(0f).setDuration(600).start()
-        idle.visibility = View.VISIBLE
-        brand.visibility = View.VISIBLE
-        message.text = text
-        message.visibility = if (text.isEmpty()) View.GONE else View.VISIBLE
-        connect.visibility = if (withConnect) View.VISIBLE else View.GONE
-        connectHint.visibility = connect.visibility
-        layoutIdleClock(withConnect)
-        updateDogs()
-    }
-
-    /** Sobre el cielo, reloj grande al centro; sobre imágenes, chico en la esquina para que se vean. */
-    private fun layoutIdleClock(withConnect: Boolean) {
-        val small = folder != null && !withConnect
-        idle.gravity = if (small) Gravity.BOTTOM or Gravity.START else Gravity.CENTER
-        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (small) 56f else 96f)
-        idle.setPadding(dp(32), dp(32), dp(32), if (small) bottomAreaHeight() + dp(36) else dp(32))
-    }
 
     // ---- Menús (solo desde la app; el protector la abre) ----
 
@@ -689,14 +647,16 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
      * efecto detrás.
      */
     fun showOptions(activity: Activity, onLogout: () -> Unit) {
+        val s = state
         val items = mutableListOf(
-            context.getString(R.string.opt_background, backgroundName(folder)),
-            context.getString(R.string.opt_fit, context.getString(if (artFit) R.string.opt_fit_whole else R.string.opt_fit_fill)),
+            context.getString(R.string.opt_background, backgroundName(s.folder)),
+            context.getString(R.string.opt_fit, context.getString(if (s.fitImage) R.string.opt_fit_whole else R.string.opt_fit_fill)),
             context.getString(
                 R.string.opt_every,
-                if (artEveryMin == 0) context.getString(R.string.opt_every_song) else context.getString(R.string.opt_every_min, artEveryMin),
+                if (s.imageEveryMin == 0) context.getString(R.string.opt_every_song)
+                else context.getString(R.string.opt_every_min, s.imageEveryMin),
             ),
-            context.getString(R.string.opt_scrim, context.resources.getStringArray(R.array.scrim_levels)[scrimLevel]),
+            context.getString(R.string.opt_scrim, context.resources.getStringArray(R.array.scrim_levels)[s.scrimLevel]),
             context.getString(R.string.opt_next_art),
             context.getString(R.string.help_screensaver),
             context.getString(R.string.help_title),
@@ -705,27 +665,18 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(R.string.opt_title)
             .setItems(items.toTypedArray()) { _, which ->
+                val now = SystemClock.elapsedRealtime()
                 when (which) {
                     0 -> {
                         pickBackground(activity, onLogout)
                         return@setItems
                     }
-                    1 -> {
-                        artFit = !artFit
-                        art.fit = artFit
-                        prefs().edit().putBoolean(KEY_ART_FIT, artFit).apply()
-                    }
-                    2 -> {
-                        artEveryMin = ART_EVERY_OPTIONS[(ART_EVERY_OPTIONS.indexOf(artEveryMin) + 1) % ART_EVERY_OPTIONS.size]
-                        prefs().edit().putInt(KEY_ART_EVERY, artEveryMin).apply()
-                    }
-                    3 -> {
-                        scrimLevel = (scrimLevel + 1) % SCRIM_LEVELS.size
-                        prefs().edit().putInt(KEY_SCRIM, scrimLevel).apply()
-                        if (lyricsScroll.visibility == View.VISIBLE) scrim.alpha = scrimAlpha()
-                    }
+                    1 -> dispatch(Action.ToggleFit)
+                    2 -> dispatch(Action.CycleImageEvery)
+                    3 -> dispatch(Action.CycleScrim)
                     4 -> {
-                        if (folder == null) backgrounds().getOrNull(1)?.let(::setBackground) else nextArt()
+                        if (state.folder == null) backgrounds().getOrNull(1)?.let { dispatch(Action.BackgroundChosen(it, now)) }
+                        else dispatch(Action.NextImage(now))
                         return@setItems
                     }
                     5 -> {
@@ -752,9 +703,9 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         val all = backgrounds()
         AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(R.string.opt_pick_background)
-            .setSingleChoiceItems(all.map(::backgroundName).toTypedArray(), all.indexOf(folder)) { dialog, which ->
+            .setSingleChoiceItems(all.map(::backgroundName).toTypedArray(), all.indexOf(state.folder)) { dialog, which ->
                 dialog.dismiss()
-                setBackground(all[which])
+                dispatch(Action.BackgroundChosen(all[which], SystemClock.elapsedRealtime()))
                 showOptions(activity, onLogout)
             }
             .setNegativeButton(R.string.close, null)
@@ -769,9 +720,31 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         }
     }
 
-    // ---- Utilidades ----
+    // ---- Preferencias ----
 
     private fun prefs() = context.getSharedPreferences("letras", Context.MODE_PRIVATE)
+
+    private fun loadPrefs(): ScreenState {
+        val p = prefs()
+        return ScreenState(
+            // Primera vez: la primera carpeta que haya (si no hay, el cielo).
+            folder = if (p.contains(KEY_FOLDER)) p.getString(KEY_FOLDER, "")?.ifEmpty { null } else ArtView.folders().firstOrNull(),
+            fitImage = p.getBoolean(KEY_FIT, true),
+            imageEveryMin = p.getInt(KEY_EVERY, 0),
+            scrimLevel = p.getInt(KEY_SCRIM, 1).coerceIn(0, ScreenState.SCRIM_LEVELS - 1),
+        )
+    }
+
+    private fun savePrefs() {
+        prefs().edit()
+            .putString(KEY_FOLDER, state.folder.orEmpty())
+            .putBoolean(KEY_FIT, state.fitImage)
+            .putInt(KEY_EVERY, state.imageEveryMin)
+            .putInt(KEY_SCRIM, state.scrimLevel)
+            .apply()
+    }
+
+    // ---- Utilidades ----
 
     private fun toast(text: String) = Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
 
@@ -784,12 +757,11 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private companion object {
         /** Carpeta del fondo ("" = cielo). Antes eran "fondo" y "fondo_v2" (cielo/artistas/carátula/automático). */
         const val KEY_FOLDER = "fondo_carpeta"
-        const val KEY_ART_FIT = "arte_completo"
-        const val KEY_ART_EVERY = "arte_cada_min"
+        const val KEY_FIT = "arte_completo"
+        const val KEY_EVERY = "arte_cada_min"
         const val KEY_SCRIM = "velo"
-        /** Cambiar el fondo de artista: 0 = con cada canción, o cada N minutos. */
-        val ART_EVERY_OPTIONS = listOf(0, 5, 15, 60)
-        val SCRIM_LEVELS = floatArrayOf(0.45f, 0.7f, 1f)
+        /** Velo detrás de la letra: poco, medio, mucho. */
+        val SCRIM_ALPHAS = floatArrayOf(0.45f, 0.7f, 1f)
         /** Luna llena (o casi): de noche, antes de dormirse, aúllan. */
         const val FULL_MOON = 0.97f
 
@@ -800,14 +772,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         const val IDLE_POLL_MS = 10_000L
         const val ERROR_POLL_MS = 15_000L
         const val TOUCH_PAUSE_MS = 5_000L
-        /** En pausa más de esto: pasa al reloj o a las fotos. */
-        const val PAUSE_TO_IDLE_MS = 20_000L
-        /** Sin música, cada cuánto cambia la imagen (marco de fotos). */
-        const val IDLE_ART_MS = 2 * 60_000L
         /** Tras un botón, cuánto esperar para preguntar de nuevo y ver el cambio. */
         const val CONTROL_REFRESH_MS = 500L
-
-        /** Adelanto del resaltado: la posición reportada llega con algo de retraso. */
-        const val LEAD_MS = 250L
     }
 }

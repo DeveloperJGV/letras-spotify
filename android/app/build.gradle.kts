@@ -48,6 +48,11 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    testOptions {
+        // La lógica de la pantalla (ScreenState.kt) se prueba en la PC; lo de Android que toque regresa vacío.
+        unitTests.isReturnDefaultValues = true
+    }
+
     lint {
         // Android 5.1 es a propósito: es la tablet que hay.
         disable += setOf("ExpiredTargetSdkVersion", "OldTargetApi")
@@ -56,4 +61,5 @@ android {
 
 dependencies {
     implementation(libs.kotlinx.coroutines.android)
+    testImplementation(libs.junit)
 }

@@ -146,6 +146,21 @@
             android:textColor="@color/text_primary"
             android:textSize="18sp" />
 
+        <!-- Batería de la tablet: porcentaje y si carga (en rojo si queda poca sin cargar). -->
+        <TextView
+            android:id="@+id/battery"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:drawablePadding="4dp"
+            android:gravity="center_vertical"
+            android:shadowColor="#99000000"
+            android:shadowDy="1"
+            android:shadowRadius="6"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp"
+            android:visibility="gone" />
+
         <Button
             android:id="@+id/connect"
             android:layout_width="wrap_content"
