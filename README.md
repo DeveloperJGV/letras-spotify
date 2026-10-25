@@ -1,8 +1,35 @@
 # Letras
 
+![Android 5.1+](https://img.shields.io/badge/Android-5.1%2B%20(API%2022)-3DDC84?logo=android&logoColor=white)
+![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white)
+![Vistas XML](https://img.shields.io/badge/UI-Vistas%20XML%20%2B%20Canvas-4285F4)
+![MVI](https://img.shields.io/badge/arquitectura-MVI-orange)
+![Sin AndroidX](https://img.shields.io/badge/AndroidX-no-lightgrey)
+![Pruebas JUnit](https://img.shields.io/badge/pruebas-JUnit%204-25A162)
+![Spotify](https://img.shields.io/badge/Spotify-Javbots%20%2B%20API-1DB954?logo=spotify&logoColor=white)
+![Pixel art: PixelLab](https://img.shields.io/badge/pixel%20art-PixelLab-ff69b4)
+
 Un proyecto de **AVIVA**. ("Letras" es nombre provisional.) App para una tablet vieja (Lenovo Tab 3 7, Android 5.1, 1 GB) que la convierte en una pantalla de la casa:
 muestra la **letra sincronizada** de lo que suena en Spotify, sobre un fondo vivo, con Hunter y Tango
 paseando abajo. Cuando no suena nada: reloj, sobre el cielo o sobre tus imágenes.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/capturas/letra-noche.png" alt="Letra de noche"><br>La letra de noche: Hunter toca la guitarra y Tango se echa a escuchar.</td>
+    <td width="50%"><img src="docs/capturas/letra-atardecer.png" alt="Letra al atardecer"><br>Al atardecer, con Hunter de DJ.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/capturas/reloj-dia.png" alt="Reloj de día"><br>Sin música, de día: reloj y batería, y los perros en lo suyo.</td>
+    <td width="50%"><img src="docs/capturas/reloj-noche.png" alt="Reloj de noche"><br>De noche: luna en su fase y Hunter y Tango dormidos.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/capturas/pausa-controles.png" alt="Pausa con controles"><br>En pausa: el reloj con los botones de la música a la mano.</td>
+    <td width="50%"><img src="docs/capturas/lunas.png" alt="Fases de la luna"><br>La luna sigue su fase real: creciente, gibosa, menguante…</td>
+  </tr>
+</table>
+
+Con fondos de imágenes (arte lofi, tus fotos) se ve igual, con la imagen detrás; esas no se publican aquí porque
+son de sus autores.
 
 ## Qué hace
 
@@ -26,6 +53,9 @@ paseando abajo. Cuando no suena nada: reloj, sobre el cielo o sobre tus imágene
     con el reloj chico en la esquina. La flechita (›) de abajo pasa a la siguiente. Con la tablet parada usa las
     verticales (si hay), y las que casi tienen la forma de la pantalla la llenan.
 - **Hunter y Tango** en la orilla de abajo:
+
+  ![Hunter y Tango tocando y durmiendo](docs/capturas/perros.png)
+
   - Suena música: se ponen **audífonos**, pasean, **mueven la cabeza**, se sientan moviendo la cola y **tocan**:
     Hunter de DJ, guitarra y maracas; Tango teclado, guitarra, maracas y tambor. Si Spotify da el tempo de la
     canción, se mueven **al pulso**.
