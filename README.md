@@ -15,8 +15,12 @@ paseando abajo. Cuando no suena nada: reloj, o marco de fotos.
   - **Cielo según la hora:** amanecer, día con nubes, atardecer, noche con estrellas y luna.
   - **Artistas:** tus imágenes o GIF animados, con su crédito en la esquina.
   - **Carátula:** la portada del disco, borrosa.
-- **Hunter y Tango** pasean mientras suena, corren mientras se busca la letra y descansan en pausa. De noche
-  llevan su lucecita.
+- **Hunter y Tango** en la orilla de abajo:
+  - Suena música: se ponen **audífonos**, pasean y al pararse **mueven la cabeza al ritmo** (con notitas) o se
+    **sientan moviendo la cola**.
+  - Se busca la letra: **corren**. Aparece la letra: **bailan** un momento.
+  - Pausa o nada sonando: se quedan parados y a los 25 s **se echan a dormir**.
+  - De noche llevan su lucecita.
 - **Marco de fotos** cuando no suena nada.
 
 ## Poner tu arte y tus fotos
@@ -74,6 +78,8 @@ Sin AndroidX ni librerías de red a propósito: la tablet es API 22 y tiene 1 GB
 
 ## Créditos
 
-- Hunter y Tango: arte de [Javbots](https://github.com/DeveloperJGV/Javbots).
+- Hunter y Tango: los personajes de [Javbots](https://github.com/DeveloperJGV/Javbots), con poses nuevas hechas en
+  [PixelLab](https://pixellab.ai). Los cuadros originales están en `arte/pixellab/` y `arte/armar_perros.py` arma
+  las hojas de la app (Hunter se recolorea a gris atigrado).
 - Letras: Spotify (vía Javbots) y [LRCLIB](https://lrclib.net).
 - Fondos de artistas: de sus autores, con el crédito que se muestra en pantalla. No se incluyen en este repo.

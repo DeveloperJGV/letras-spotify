@@ -397,6 +397,8 @@ class MainActivity : Activity() {
         lyrics = l
         render(l)
         updateDogs()
+        // Ya hay letra: Hunter y Tango lo festejan.
+        dogs.celebrate()
     }
 
     private fun loadLyrics(t: NowPlaying) {
