@@ -4,7 +4,6 @@
     <string name="connect">Conectar con Spotify</string>
     <string name="connect_hint">Se abre Firefox para iniciar sesión. Al terminar, vuelve aquí solo.</string>
     <string name="missing_config">Falta configurar de dónde sale la música.\nEn android/local.properties pon javbots.token=… (Javbots) o spotify.clientId=… (Spotify) y vuelve a compilar.</string>
-    <string name="looking_for_pc">Buscando la PC con Javbots…</string>
     <string name="bg_now">Fondo: %1$s</string>
     <string name="bg_sky">cielo según la hora</string>
     <string name="bg_folder">%1$s (%2$d imágenes)</string>
@@ -40,8 +39,9 @@
     <string name="control_failed">No llegó a Spotify. ¿Está abierto en la PC con la extensión de Javbots?</string>
     <string name="exit">Salir</string>
     <string name="battery_percent">%1$d%%</string>
-    <string name="battery_charging">%1$d%% · cargando</string>
-    <string name="battery_full">100%% · cargada</string>
+    <string name="battery_label_charging">CARGANDO</string>
+    <string name="battery_label_full">CARGADA</string>
+    <string name="battery_label_low">POCA BATERÍA</string>
     <string name="help_title">Cómo se usa</string>
     <string name="help_screensaver">Protector de pantalla</string>
     <string name="help_text">Botones de arriba: ? esta ayuda · cuadro: cambiar el fondo · tres puntos: opciones.\n\nCon música, abajo: anterior, pausa, siguiente y volumen de Spotify en la PC.\n\nDoble toque en cualquier parte: cambiar el fondo. Mantener presionado: opciones. Si deslizas la letra con el dedo, se queda ahí 5 segundos.\n\nFondos: el cielo, o una carpeta de imágenes. Cada carpeta dentro de Pictures/Letras/fondos es una opción con su nombre (Lofi, Boda, Hunter y Tango…). Adentro, sus carpetas dia y noche son solo para esa hora. Si el archivo se llama «Artista - Título», sale el crédito. La flechita de abajo pasa a la siguiente imagen.\n\nProtector de pantalla: con la tablet cargando, en vez de apagarse muestra esta pantalla. Se elige en Ajustes → Pantalla → Protector de pantalla → Letras.\n\nHunter y Tango tienen un secreto. Tócalos.</string>

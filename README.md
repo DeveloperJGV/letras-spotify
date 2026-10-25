@@ -42,7 +42,10 @@ son de sus autores.
 - **Controles de la música** (con Javbots): anterior, pausa, siguiente y volumen del Spotify de la PC, abajo,
   arriba de los perros.
 - **En pausa** más de 20 s pasa al reloj con el botón de play a la mano.
-- **Batería** bajo el reloj: porcentaje y si está cargando (en rojo si queda poca sin cargar; con la letra, junto al título).
+- **Reloj** con brillo según el cielo (azul de noche, durazno de día), los dos puntos latiendo y la fecha abajo.
+- **Batería** bajo el reloj: una pila que se llena con su color (verde, ámbar, rojo), con burbujas y un rayo que
+  late mientras carga. Con la letra, si queda poca, sale junto al título.
+- **Sin la PC** (apagada o dormida) dice "Nada sonando" y la busca por detrás, sin anunciarlo.
 - **Protector de pantalla:** con la tablet cargando, en vez de apagarse muestra esta misma pantalla
   (Ajustes → Pantalla → Protector de pantalla → Letras). Botón ✕ para salir.
 - **Fondos** (botón del cuadrito o doble toque para cambiar):
@@ -145,7 +148,7 @@ acciones ──► reduce(estado, acción) ──► estado nuevo + efectos
 | `Pantalla.kt` | Vistas: manda acciones, dibuja el estado y hace los efectos. La usan la app y el protector. |
 | `MainActivity.kt` / `Protector.kt` | La app (inicio de sesión, menús) y el protector de pantalla. |
 | `JavbotsSource.kt`, `SpotifyPlayer.kt`, `Lyrics.kt` | De dónde sale la música y la letra. |
-| `SkyView`, `DogsView`, `ArtView` | Vistas que se dibujan solas (cielo y luna, Hunter y Tango, imágenes). |
+| `SkyView`, `DogsView`, `ArtView`, `ClockView`, `BatteryView` | Vistas que se dibujan solas (cielo y luna, Hunter y Tango, imágenes, reloj, batería). |
 
 Pruebas (en la PC, sin tablet):
 

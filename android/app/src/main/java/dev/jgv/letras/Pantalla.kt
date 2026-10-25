@@ -22,7 +22,6 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.TextClock
 import android.widget.TextView
 import android.widget.Toast
 import kotlinx.coroutines.Dispatchers
@@ -76,9 +75,9 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private val lyricsScroll: ScrollView = root.findViewById(R.id.lyricsScroll)
     private val lyricsContainer: LinearLayout = root.findViewById(R.id.lyricsContainer)
     private val idle: LinearLayout = root.findViewById(R.id.idle)
-    private val clock: TextClock = root.findViewById(R.id.clock)
+    private val clock: ClockView = root.findViewById(R.id.clock)
     private val message: TextView = root.findViewById(R.id.message)
-    private val battery: TextView = root.findViewById(R.id.battery)
+    private val battery: BatteryView = root.findViewById(R.id.battery)
     private val connect: Button = root.findViewById(R.id.connect)
     private val connectHint: View = root.findViewById(R.id.connectHint)
     private val controls: View = root.findViewById(R.id.controls)
@@ -330,7 +329,10 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private fun tick() {
         val now = SystemClock.elapsedRealtime()
         dispatch(Action.Tick(now))
-        dogs.night = SkyView.darkness(sky.forcedHour ?: SkyView.currentHour())
+        val darkness = SkyView.darkness(sky.forcedHour ?: SkyView.currentHour())
+        dogs.night = darkness
+        clock.night = darkness
+        battery.night = darkness
         if (sky.forcedMoonPhase == null) {
             dogs.fullMoon = SkyView.illumination(SkyView.moonPhase(System.currentTimeMillis())) > FULL_MOON
         }
@@ -449,7 +451,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         val text = when (w) {
             Waiting.NothingPlaying -> context.getString(R.string.nothing_playing)
             Waiting.NotASong -> context.getString(R.string.not_a_song)
-            Waiting.LookingForPc -> context.getString(R.string.looking_for_pc)
+            // Sin PC (apagada, dormida o sin Javbots) no se anuncia la búsqueda: para quien mira, nada suena.
+            Waiting.LookingForPc -> context.getString(R.string.nothing_playing)
             Waiting.NetworkError -> context.getString(R.string.network_error)
             Waiting.MissingConfig -> context.getString(R.string.missing_config)
             is Waiting.Login -> w.error?.let { context.getString(R.string.login_failed, it) }.orEmpty()
@@ -491,21 +494,19 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         if (v != null) volume.text = context.getString(R.string.volume_percent, (v * 100).toInt())
     }
 
-    /** Batería en el reloj: porcentaje y si carga; en rojo si queda poca sin cargar. */
+    /** Batería en el reloj: la pila con su nivel y, abajo del número, si carga o si queda poca. */
     private fun renderBattery(s: ScreenState) {
         renderTrackState(s)
         val b = s.battery
         battery.visibility = if (b == null) View.GONE else View.VISIBLE
         if (b == null) return
-        battery.text = when {
-            b.charging && b.percent >= 100 -> context.getString(R.string.battery_full)
-            b.charging -> context.getString(R.string.battery_charging, b.percent)
-            else -> context.getString(R.string.battery_percent, b.percent)
+        val label = when {
+            b.charging && b.percent >= 100 -> R.string.battery_label_full
+            b.charging -> R.string.battery_label_charging
+            b.low -> R.string.battery_label_low
+            else -> null
         }
-        battery.setCompoundDrawablesWithIntrinsicBounds(
-            if (b.charging) R.drawable.ic_battery_charging else R.drawable.ic_battery, 0, 0, 0,
-        )
-        battery.setTextColor(color(if (b.low) R.color.battery_low else R.color.text_primary))
+        battery.show(b, label?.let(context::getString).orEmpty())
     }
 
     private fun renderLyrics(s: ScreenState) {
@@ -604,7 +605,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private fun layoutIdleClock(s: ScreenState) {
         val small = s.folder != null && s.waiting !is Waiting.Login
         idle.gravity = if (small) Gravity.BOTTOM or Gravity.START else Gravity.CENTER
-        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (small) 56f else 96f)
+        clock.sizeSp = if (small) 56f else 96f
+        clock.alignStart = small
         idle.setPadding(dp(32), dp(32), dp(32), if (small) bottomAreaHeight() + dp(36) else dp(32))
     }
 
