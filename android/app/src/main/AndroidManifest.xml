@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Para saber la red de la tablet y buscar a Javbots si la PC cambia de IP. -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <!-- Fotos del marco (Pictures/Letras). En Android 5.1 se concede al instalar. -->
+    <!-- Imágenes de fondo (Pictures/Letras/fondos). En Android 5.1 se concede al instalar. -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
 
     <application

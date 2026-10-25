@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Capas, de atrás hacia adelante: cielo, fotos, velo para leer, letra, encabezado, reloj, botones, perros.
+<!-- Capas, de atrás hacia adelante: cielo, imágenes, velo para leer, letra, encabezado, reloj, botones, perros.
      La usan la app y el protector de pantalla (Pantalla.kt). -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/root"
@@ -12,18 +12,13 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Fondo con arte (artistas en Pictures/Letras/fondos) o la carátula borrosa; cubre al cielo. -->
+    <!-- Fondo de imágenes: una carpeta de Pictures/Letras/fondos (Lofi, Boda…); cubre al cielo. -->
     <dev.jgv.letras.ArtView
         android:id="@+id/art"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:visibility="gone" />
 
-    <dev.jgv.letras.PhotoFrameView
-        android:id="@+id/photos"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:visibility="gone" />
 
     <!-- Oscurece el fondo mientras hay letra, para que se lea sobre un cielo de día. -->
     <View

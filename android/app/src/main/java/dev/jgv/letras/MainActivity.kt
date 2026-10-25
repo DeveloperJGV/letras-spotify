@@ -77,10 +77,10 @@ class MainActivity : Activity(), Pantalla.Host {
             Pantalla.Menu.entries.firstOrNull { it.name == name }?.let { window.decorView.post { openMenu(it) } }
         }
         if (!BuildConfig.DEBUG) return
-        // Solo debug: --ef hora 19.5, --ef luna 0.5, --ei fondo 0..3, --ei demo 40
+        // Solo debug: --ef hora 19.5, --ef luna 0.5, --es fondo Lofi (o "" = cielo), --ei demo 40
         val hour = if (extras.hasExtra(EXTRA_HOUR)) extras.getFloatExtra(EXTRA_HOUR, 12f) else null
         val moon = if (extras.hasExtra(EXTRA_MOON)) extras.getFloatExtra(EXTRA_MOON, 0.5f) else null
-        val bg = if (extras.hasExtra(EXTRA_BACKGROUND)) extras.getIntExtra(EXTRA_BACKGROUND, 0) else null
+        val bg = extras.getStringExtra(EXTRA_BACKGROUND)
         pantalla.debugOverrides(hour, moon, bg)
         listOf(EXTRA_HOUR, EXTRA_MOON, EXTRA_BACKGROUND).forEach(extras::removeExtra)
         if (extras.hasExtra(EXTRA_DEMO_SECONDS)) {

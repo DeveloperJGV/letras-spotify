@@ -59,7 +59,6 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private val credit: View = root.findViewById(R.id.credit)
     private val creditText: TextView = root.findViewById(R.id.creditText)
     private val brand: View = root.findViewById(R.id.brand)
-    private val photos: PhotoFrameView = root.findViewById(R.id.photos)
     private val scrim: View = root.findViewById(R.id.scrim)
     private val floor: View = root.findViewById(R.id.floor)
     private val dogs: DogsView = root.findViewById(R.id.dogs)
@@ -98,12 +97,10 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private var canControl = false
 
     /**
-     * Qué hay detrás de la letra. AUTO: arte de artistas con la música (si hay) y el cielo con su luna cuando no
-     * suena nada.
+     * El fondo: el cielo (null) o una carpeta de imágenes de Pictures/Letras/fondos (su nombre: "Lofi", "Boda"…).
+     * Se ve igual con música y sin música; sin música el reloj se hace chico en la esquina.
      */
-    // (Hubo un fondo de carátula desenfocada; se quitó porque no se distinguía nada.)
-    private enum class Background { AUTO, SKY, ART }
-    private var background = Background.AUTO
+    private var folder: String? = null
     private var artIndex = -1
     private var lastArtChangeAt = 0L
     /** El arte que está puesto, para no recargarlo al ir y venir entre la letra y el reloj. */
@@ -142,7 +139,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         root.findViewById<View>(R.id.btnVolumeUp).setOnClickListener { control("volumeUp") }
 
         val p = prefs()
-        background = Background.entries.getOrNull(p.getInt(KEY_BACKGROUND, 0)) ?: Background.AUTO
+        // Primera vez: la primera carpeta que haya (si no hay, el cielo).
+        folder = if (p.contains(KEY_FOLDER)) p.getString(KEY_FOLDER, "")?.ifEmpty { null } else ArtView.folders().firstOrNull()
         artFit = p.getBoolean(KEY_ART_FIT, true)
         artEveryMin = p.getInt(KEY_ART_EVERY, 0)
         scrimLevel = p.getInt(KEY_SCRIM, 1)
@@ -168,7 +166,6 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
 
     fun stop() {
         stopLoops()
-        photos.stop()
     }
 
     fun destroy() {
@@ -180,15 +177,15 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         gestures.onTouchEvent(ev)
     }
 
-    /** Solo debug: hora del cielo, fase de la luna y fondo fijos. */
-    fun debugOverrides(hour: Float?, moonPhase: Float?, backgroundIndex: Int?) {
+    /** Solo debug: hora del cielo, fase de la luna y fondo ("" = cielo, o el nombre de una carpeta) fijos. */
+    fun debugOverrides(hour: Float?, moonPhase: Float?, background: String?) {
         if (hour != null) sky.forcedHour = hour
         if (moonPhase != null) {
             sky.forcedMoonPhase = moonPhase
             dogs.fullMoon = SkyView.illumination(moonPhase) > FULL_MOON
         }
-        if (backgroundIndex != null) {
-            background = Background.entries[backgroundIndex.coerceIn(0, Background.entries.size - 1)]
+        if (background != null) {
+            folder = background.ifEmpty { null }
             applyBackground(newArt = true)
         }
     }
@@ -338,15 +335,13 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private fun showLyricsScreen() {
         val wasShowing = showingLyrics
         showingLyrics = true
-        photos.stop()
-        photos.visibility = View.GONE
         idle.visibility = View.GONE
         brand.visibility = View.GONE
         header.visibility = View.VISIBLE
         lyricsScroll.visibility = View.VISIBLE
         // Sobre el arte el velo es más ligero: que se luzca el fondo sin perder la letra.
         scrim.animate().alpha(scrimAlpha()).setDuration(600).start()
-        if (!wasShowing && background == Background.AUTO) applyBackground(newArt = !artShown)
+        if (!wasShowing) layoutIdleClock(withConnect = false)
     }
 
     private fun onNothingPlaying(messageRes: Int) {
@@ -364,7 +359,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         currentIndex = -1
         lyricsJob?.cancel()
         renderMessage(context.getString(R.string.searching))
-        if (background.showsArt() && artEveryMin == 0) nextArt()
+        if (folder != null && artEveryMin == 0) nextArt()
     }
 
     private fun setLyrics(l: Lyrics) {
@@ -503,7 +498,9 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             dogs.fullMoon = SkyView.illumination(SkyView.moonPhase(System.currentTimeMillis())) > FULL_MOON
         }
         val now = SystemClock.elapsedRealtime()
-        if (background.showsArt() && showingLyrics && artEveryMin > 0 && now - lastArtChangeAt > artEveryMin * 60_000L) nextArt()
+        // Con música: con cada canción o cada N minutos. Sin música: cada pocos minutos, como marco de fotos.
+        val every = if (showingLyrics) artEveryMin * 60_000L else IDLE_ART_MS
+        if (folder != null && every > 0 && now - lastArtChangeAt > every) nextArt()
         val t = track
         // Al ritmo: cuántos pulsos van de la canción (se pausa con ella).
         dogs.beat = t?.tempo?.takeIf { t.isPlaying && showingLyrics }?.let { t.positionAt(now) * it / 60_000.0 }
@@ -581,29 +578,26 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
 
     // ---- Fondos ----
 
-    private fun Background.showsArt() = this == Background.ART || (this == Background.AUTO && showingLyrics)
+    /** Las opciones de fondo: el cielo y cada carpeta con imágenes. */
+    private fun backgrounds(): List<String?> = listOf<String?>(null) + ArtView.folders()
 
+    /** El botón de fondo y el doble toque: cielo → cada carpeta → cielo. */
     fun cycleBackground() {
-        setBackground(Background.entries[(background.ordinal + 1) % Background.entries.size])
+        val all = backgrounds()
+        if (all.size == 1) toast(context.getString(R.string.bg_no_folders))
+        setBackground(all[(all.indexOf(folder) + 1) % all.size])
     }
 
-    private fun setBackground(wanted: Background) {
-        var next = wanted
-        if (next == Background.ART && artFiles().isEmpty()) {
-            toast(context.getString(R.string.bg_no_art))
-            next = Background.SKY
-        }
-        background = next
-        prefs().edit().putInt(KEY_BACKGROUND, next.ordinal).apply()
-        toast(context.getString(R.string.bg_now, backgroundName(next)))
+    private fun setBackground(name: String?) {
+        folder = name
+        prefs().edit().putString(KEY_FOLDER, name.orEmpty()).apply()
+        toast(context.getString(R.string.bg_now, backgroundName(name)))
         applyBackground(newArt = true)
+        layoutIdleClock(withConnect = connect.visibility == View.VISIBLE)
     }
 
-    private fun backgroundName(b: Background) = when (b) {
-        Background.AUTO -> context.getString(R.string.bg_auto)
-        Background.SKY -> context.getString(R.string.bg_sky)
-        Background.ART -> context.getString(R.string.bg_art, artFiles().size)
-    }
+    private fun backgroundName(name: String?) =
+        if (name == null) context.getString(R.string.bg_sky) else context.getString(R.string.bg_folder, name, ArtView.count(name))
 
     /** Velo detrás de la letra: suave, medio o fuerte. */
     private fun scrimAlpha() = SCRIM_LEVELS[scrimLevel.coerceIn(0, SCRIM_LEVELS.size - 1)]
@@ -617,26 +611,14 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     }
 
     private fun applyBackground(newArt: Boolean) {
-        when {
-            background.showsArt() -> if (newArt || !artShown) nextArt() else {
-                art.visibility = View.VISIBLE
-                credit.visibility = View.VISIBLE
-            }
-            // Cielo (o AUTO sin música): se ve el cielo con su luna.
-            else -> if (background == Background.AUTO) {
-                art.visibility = View.GONE
-                credit.visibility = View.GONE
-            } else {
-                hideArt()
-            }
-        }
+        if (folder == null) hideArt() else if (newArt || !artShown) nextArt()
     }
 
     private fun night() = SkyView.darkness(sky.forcedHour ?: SkyView.currentHour()) > 0.5f
 
-    private fun artFiles() = ArtView.available(night())
+    private fun artFiles() = folder?.let { ArtView.available(it, night()) }.orEmpty()
 
-    /** Otro fondo de artista (al azar, sin repetir el anterior), con su crédito. */
+    /** Otra imagen de la carpeta (al azar, sin repetir la anterior), con su crédito si lo trae el nombre. */
     fun nextArt() {
         artJob?.cancel()
         artJob = scope.launch {
@@ -651,14 +633,17 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             artIndex = if (files.size == 1) 0 else (artIndex + 1 + (Math.random() * (files.size - 1)).toInt()) % files.size
             val file = files[artIndex]
             val decoded = withContext(Dispatchers.IO) { art.decode(file) } ?: return@launch
-            if (!background.showsArt()) return@launch
+            if (folder == null) return@launch
             art.animate().alpha(0f).setDuration(if (art.visibility == View.VISIBLE) 400 else 0).withEndAction {
                 art.show(decoded)
                 artShown = true
                 art.visibility = View.VISIBLE
                 art.animate().alpha(1f).setDuration(600).start()
             }.start()
-            creditText.text = ArtView.credit(file)
+            // Fotos sin "Artista - Título" en el nombre: sin crédito, solo la flechita.
+            val text = ArtView.credit(file)
+            creditText.text = text
+            creditText.visibility = if (text.isEmpty()) View.GONE else View.VISIBLE
             credit.visibility = View.VISIBLE
         }
     }
@@ -676,19 +661,16 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         message.visibility = if (text.isEmpty()) View.GONE else View.VISIBLE
         connect.visibility = if (withConnect) View.VISIBLE else View.GONE
         connectHint.visibility = connect.visibility
-        if (background == Background.AUTO) applyBackground(newArt = false)
+        layoutIdleClock(withConnect)
         updateDogs()
+    }
 
-        // Con fotos en Pictures/Letras, el reposo es un marco de fotos con un reloj chico en la esquina.
-        scope.launch {
-            val hasPhotos = withContext(Dispatchers.IO) { photos.photos().isNotEmpty() }
-            if (showingLyrics || idle.visibility != View.VISIBLE) return@launch
-            photos.visibility = if (hasPhotos) View.VISIBLE else View.GONE
-            if (hasPhotos) photos.start() else photos.stop()
-            idle.gravity = if (hasPhotos && !withConnect) Gravity.BOTTOM or Gravity.START else Gravity.CENTER
-            clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (hasPhotos && !withConnect) 56f else 96f)
-            idle.setPadding(dp(32), dp(32), dp(32), if (hasPhotos) bottomAreaHeight() + dp(8) else dp(32))
-        }
+    /** Sobre el cielo, reloj grande al centro; sobre imágenes, chico en la esquina para que se vean. */
+    private fun layoutIdleClock(withConnect: Boolean) {
+        val small = folder != null && !withConnect
+        idle.gravity = if (small) Gravity.BOTTOM or Gravity.START else Gravity.CENTER
+        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (small) 56f else 96f)
+        idle.setPadding(dp(32), dp(32), dp(32), if (small) bottomAreaHeight() + dp(36) else dp(32))
     }
 
     // ---- Menús (solo desde la app; el protector la abre) ----
@@ -708,7 +690,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
      */
     fun showOptions(activity: Activity, onLogout: () -> Unit) {
         val items = mutableListOf(
-            context.getString(R.string.opt_background, backgroundName(background)),
+            context.getString(R.string.opt_background, backgroundName(folder)),
             context.getString(R.string.opt_fit, context.getString(if (artFit) R.string.opt_fit_whole else R.string.opt_fit_fill)),
             context.getString(
                 R.string.opt_every,
@@ -724,7 +706,10 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             .setTitle(R.string.opt_title)
             .setItems(items.toTypedArray()) { _, which ->
                 when (which) {
-                    0 -> cycleBackground()
+                    0 -> {
+                        pickBackground(activity, onLogout)
+                        return@setItems
+                    }
                     1 -> {
                         artFit = !artFit
                         art.fit = artFit
@@ -740,7 +725,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
                         if (lyricsScroll.visibility == View.VISIBLE) scrim.alpha = scrimAlpha()
                     }
                     4 -> {
-                        if (!background.showsArt()) setBackground(Background.ART) else nextArt()
+                        if (folder == null) backgrounds().getOrNull(1)?.let(::setBackground) else nextArt()
                         return@setItems
                     }
                     5 -> {
@@ -756,6 +741,20 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
                         return@setItems
                     }
                 }
+                showOptions(activity, onLogout)
+            }
+            .setNegativeButton(R.string.close, null)
+            .show()
+    }
+
+    /** Lista de fondos para escoger: el cielo y cada carpeta con cuántas imágenes tiene. */
+    private fun pickBackground(activity: Activity, onLogout: () -> Unit) {
+        val all = backgrounds()
+        AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle(R.string.opt_pick_background)
+            .setSingleChoiceItems(all.map(::backgroundName).toTypedArray(), all.indexOf(folder)) { dialog, which ->
+                dialog.dismiss()
+                setBackground(all[which])
                 showOptions(activity, onLogout)
             }
             .setNegativeButton(R.string.close, null)
@@ -783,8 +782,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private fun color(id: Int) = context.resources.getColor(id)
 
     private companion object {
-        /** v2: se agregó AUTO al principio; las preferencias viejas ("fondo") apuntaban a otro orden. */
-        const val KEY_BACKGROUND = "fondo_v2"
+        /** Carpeta del fondo ("" = cielo). Antes eran "fondo" y "fondo_v2" (cielo/artistas/carátula/automático). */
+        const val KEY_FOLDER = "fondo_carpeta"
         const val KEY_ART_FIT = "arte_completo"
         const val KEY_ART_EVERY = "arte_cada_min"
         const val KEY_SCRIM = "velo"
@@ -803,6 +802,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         const val TOUCH_PAUSE_MS = 5_000L
         /** En pausa más de esto: pasa al reloj o a las fotos. */
         const val PAUSE_TO_IDLE_MS = 20_000L
+        /** Sin música, cada cuánto cambia la imagen (marco de fotos). */
+        const val IDLE_ART_MS = 2 * 60_000L
         /** Tras un botón, cuánto esperar para preguntar de nuevo y ver el cambio. */
         const val CONTROL_REFRESH_MS = 500L
 

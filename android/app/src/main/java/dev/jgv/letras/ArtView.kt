@@ -182,13 +182,25 @@ class ArtView @JvmOverloads constructor(context: Context, attrs: AttributeSet? =
         val FOLDER = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Letras/fondos")
         private val EXTENSIONS = setOf("gif", "jpg", "jpeg", "png", "webp")
 
+        private fun list(dir: File) = dir.listFiles { f -> f.isFile && f.extension.lowercase() in EXTENSIONS }.orEmpty().toList()
+
+        private fun all(dir: File) = list(dir) + list(File(dir, "dia")) + list(File(dir, "noche"))
+
+        /** Cada carpeta de `fondos/` con imágenes es un fondo ("Lofi", "Boda", "Hunter y Tango"…). */
+        fun folders(): List<String> = FOLDER.listFiles { f -> f.isDirectory }.orEmpty()
+            .filter { it.name != "dia" && it.name != "noche" && all(it).isNotEmpty() }
+            .map { it.name }
+            .sortedBy { it.lowercase() }
+
+        fun count(folder: String) = all(File(FOLDER, folder)).size
+
         /**
-         * Fondos para esta hora: los de `fondos/` siempre; los de `fondos/dia/` solo de día y los de
-         * `fondos/noche/` solo de noche.
+         * Imágenes de [folder] para esta hora: las sueltas siempre; las de su `dia/` solo de día y las de su
+         * `noche/` solo de noche. Si a esta hora no hay ninguna, todas.
          */
-        fun available(night: Boolean): List<File> {
-            fun list(dir: File) = dir.listFiles { f -> f.isFile && f.extension.lowercase() in EXTENSIONS }.orEmpty().toList()
-            return list(FOLDER) + list(File(FOLDER, if (night) "noche" else "dia"))
+        fun available(folder: String, night: Boolean): List<File> {
+            val dir = File(FOLDER, folder)
+            return (list(dir) + list(File(dir, if (night) "noche" else "dia"))).ifEmpty { all(dir) }
         }
 
         /** Proporción (ancho / alto) de cada archivo ya visto: leerla solo lee el encabezado, pero son decenas. */
@@ -209,11 +221,15 @@ class ArtView @JvmOverloads constructor(context: Context, attrs: AttributeSet? =
             return good.ifEmpty { files }
         }
 
-        /** "Kirokaze - Noche de lluvia.gif" → "Arte: Kirokaze · Noche de lluvia". */
+        /**
+         * "Kirokaze - Noche de lluvia.gif" → "Arte: Kirokaze · Noche de lluvia". Sin " - " en el nombre (una foto
+         * de la cámara, IMG_1234.jpg) no hay crédito: "".
+         */
         fun credit(file: File): String {
             val name = file.nameWithoutExtension.replace('_', ' ').trim()
+            if (" - " !in name) return ""
             val artist = name.substringBefore(" - ").trim()
-            val title = name.substringAfter(" - ", "").trim()
+            val title = name.substringAfter(" - ").trim()
             return if (title.isEmpty()) "Arte: $artist" else "Arte: $artist · $title"
         }
     }

@@ -2,7 +2,7 @@
 
 Un proyecto de **AVIVA**. ("Letras" es nombre provisional.) App para una tablet vieja (Lenovo Tab 3 7, Android 5.1, 1 GB) que la convierte en una pantalla de la casa:
 muestra la **letra sincronizada** de lo que suena en Spotify, sobre un fondo vivo, con Hunter y Tango
-paseando abajo. Cuando no suena nada: reloj, o marco de fotos.
+paseando abajo. Cuando no suena nada: reloj, sobre el cielo o sobre tus imágenes.
 
 ## Qué hace
 
@@ -17,12 +17,13 @@ paseando abajo. Cuando no suena nada: reloj, o marco de fotos.
 - **En pausa** más de 20 s pasa al reloj (o a las fotos) con el botón de play a la mano.
 - **Protector de pantalla:** con la tablet cargando, en vez de apagarse muestra esta misma pantalla
   (Ajustes → Pantalla → Protector de pantalla → Letras). Botón ✕ para salir.
-- **Fondos** (doble toque o el botón para cambiar):
-  - **Automático** (el de fábrica): arte de artistas mientras suena música y el cielo con su luna cuando no.
+- **Fondos** (botón del cuadrito o doble toque para cambiar):
   - **Cielo según la hora:** amanecer, día con nubes, atardecer, noche con estrellas y la **luna en su fase de
     hoy** (creciente, llena, menguante…, calculada por la fecha).
-  - **Artistas:** tus imágenes o GIF animados, con su crédito en la esquina. Tocar el crédito (›) pasa a la
-    siguiente. Con la tablet parada usa las verticales (si hay) y las que casi tienen la forma de la pantalla la llenan.
+  - **Una carpeta de imágenes:** cada carpeta de `Pictures/Letras/fondos` es una opción con su nombre (Lofi, Boda,
+    Hunter y Tango…). Se ve igual con música y sin música; sin música cambia cada 2 minutos, como marco de fotos,
+    con el reloj chico en la esquina. La flechita (›) de abajo pasa a la siguiente. Con la tablet parada usa las
+    verticales (si hay), y las que casi tienen la forma de la pantalla la llenan.
 - **Hunter y Tango** en la orilla de abajo:
   - Suena música: se ponen **audífonos**, pasean, **mueven la cabeza**, se sientan moviendo la cola y **tocan**:
     Hunter de DJ, guitarra y maracas; Tango teclado, guitarra, maracas y tambor. Si Spotify da el tempo de la
@@ -35,36 +36,38 @@ paseando abajo. Cuando no suena nada: reloj, o marco de fotos.
   - De noche llevan su lucecita; de día, un contorno claro para que se vean sobre cualquier fondo.
   - Con **luna llena** le aúllan antes de dormirse.
   - Tienen un secreto. Tócalos.
-- **Marco de fotos** cuando no suena nada.
 
-## Poner tu arte y tus fotos
+## Poner tus imágenes
 
-Conecta la tablet a la PC por USB, ábrela en el Explorador de archivos y copia a:
+Conecta la tablet a la PC por USB, ábrela en el Explorador de archivos y entra a `Pictures/Letras/fondos/`.
+**Cada carpeta que hagas ahí es un fondo** y sale en la app con su nombre:
 
-| Carpeta en la tablet             | Qué va                                                         |
-| -------------------------------- | -------------------------------------------------------------- |
-| `Pictures/Letras/`               | Fotos para el marco (sin música)                               |
-| `Pictures/Letras/fondos/`        | Fondos de artistas: se usan a cualquier hora                    |
-| `Pictures/Letras/fondos/dia/`    | Solo de día (7:00 a 18:30, más o menos)                        |
-| `Pictures/Letras/fondos/noche/`  | Solo de noche                                                   |
+```
+Pictures/Letras/fondos/
+├── Lofi/              ← arte de artistas lofi
+│   ├── dia/           ← (opcional) solo de día
+│   └── noche/         ← (opcional) solo de noche
+├── Boda/              ← tus fotos
+└── Hunter y Tango/
+```
 
-- Sirven **JPG, PNG, WebP y GIF animado** (hasta 25 MB cada uno).
-- **El crédito sale del nombre del archivo:** `Artista - Título.gif` → "Arte: Artista · Título".
-  Sin guion, solo el artista.
-- No hace falta reiniciar la app: los toma en el siguiente cambio de fondo.
+- Las imágenes sueltas en la carpeta salen a cualquier hora; las de `dia/` y `noche/`, solo a esa hora.
+- Sirven **JPG, PNG, WebP y GIF animado** (hasta 25 MB cada uno). Fotos de la cámara tal cual.
+- **Crédito:** si el archivo se llama `Artista - Título.gif`, sale "Arte: Artista · Título". Si no (IMG_1234.jpg),
+  no sale nada.
+- Una carpeta vacía no aparece. No hace falta reiniciar la app.
 
-Por cable con adb también se puede:
-`adb push "Artista - Título.gif" /sdcard/Pictures/Letras/fondos/`
+Por cable con adb: `adb push "Artista - Título.gif" "/sdcard/Pictures/Letras/fondos/Lofi/"`
 
 ## Opciones (mantener presionado en la pantalla)
 
 | Opción                         | Valores                                                   |
 | ------------------------------ | --------------------------------------------------------- |
-| Fondo                          | automático · cielo · artistas                             |
+| Fondo                          | cielo o una de tus carpetas (lista para escoger)          |
 | Arte                           | completo (con relleno borroso) · llenar la pantalla       |
-| Cambiar arte                   | con cada canción · cada 5, 15 o 60 min                    |
+| Cambiar imagen (con música)    | con cada canción · cada 5, 15 o 60 min                    |
 | Oscurecer detrás de la letra   | poco · medio · mucho                                      |
-| Siguiente fondo de artista     |                                                           |
+| Siguiente imagen               | (también la flechita junto al crédito)                    |
 | Protector de pantalla          | abre los ajustes de Android para elegirlo                 |
 | Cómo se usa                    | la ayuda                                                  |
 | Cerrar sesión de Spotify       | (si hay sesión)                                           |
