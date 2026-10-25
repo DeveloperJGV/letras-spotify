@@ -7,5 +7,7 @@
     <color name="line_future">#B3FFFFFF</color>
     <color name="line_current">#FFFFFFFF</color>
     <color name="accent">#FF1ED760</color>
+    <!-- Dorado de la marca AVIVA (el mismo de AVIVA · Fondos Vivos). -->
+    <color name="aviva_gold">#FFFFD49A</color>
     <color name="scrim">#A60A0A10</color>
 </resources>

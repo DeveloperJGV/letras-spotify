@@ -1,18 +1,23 @@
 """Arma las hojas de Hunter y Tango para la app desde los cuadros de PixelLab (arte/pixellab/<perro>/<animación>/N.png).
 
 Cada hoja (android/app/src/main/res/drawable-nodpi/perros_<perro>.png) tiene una fila por animación, en el orden
-de FILAS (el mismo que DogsView.Anim), y celdas del mismo tamaño: el recorte común de todos los cuadros del perro,
-así los pies quedan a la misma altura en todas las animaciones.
+de FILAS, y celdas del mismo tamaño: el recorte común de todos los cuadros del perro, así los pies quedan a la misma
+altura en todas las animaciones. res/raw/perros.json dice qué fila es cada animación y cuántos cuadros tiene
+(DogsView lo lee). Las animaciones que aún no existen en arte/pixellab/<perro>/ se saltan.
 
 Ajustes a mano:
   - Hunter: PixelLab lo hace café liso; Hunter es atigrado gris. El café pasa a gris cálido con rayitas
     (misma regla que en Javbots), sin tocar el naranja de los audífonos (más saturado que el pelo).
+  - Dormir panza arriba se intentó dos veces y no salió (no se voltean): no se usa.
   - Caminar sin audífonos: Tango sin los cuadros 4 y 5 (mancha amarilla); Hunter solo los pasos 0 y 1
     (los demás se agachan de más).
+
+También arma la hoja de los sueños (arte/pixellab/suenos/).
 
 Uso: python arte/armar_perros.py [--preview salida.png]
 """
 import colorsys
+import json
 import os
 import sys
 
@@ -22,9 +27,17 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 ORIGEN = os.path.join(AQUI, 'pixellab')
 DESTINO = os.path.join(AQUI, '..', 'android', 'app', 'src', 'main', 'res', 'drawable-nodpi')
 
-# (animación, carpeta) en el orden de DogsView.Anim
-FILAS = ['walk', 'aud_walk', 'run', 'sleep', 'idle', 'headbob', 'sit', 'party']
-COLUMNAS = 9
+FILAS = [
+    # base
+    'walk', 'aud_walk', 'run', 'sleep', 'idle', 'headbob', 'sit', 'party',
+    # noche
+    'sleep_curl', 'sleep_side', 'sleep_sploot', 'dream',
+    # día
+    'sniff', 'scratch', 'stretch', 'chew', 'play', 'bark', 'shake', 'tail_chase', 'roll', 'look_up', 'yawn',
+    # con música
+    'howl', 'listen_lie', 'wiggle',
+]
+INDICE = os.path.join(AQUI, '..', 'android', 'app', 'src', 'main', 'res', 'raw', 'perros.json')
 CUADROS = {
     ('tango', 'walk'): [0, 1, 2, 3],
     ('hunter', 'walk'): [0, 1, 0, 1],
@@ -68,8 +81,14 @@ def cuadros(perro, anim):
     return ims
 
 
-def armar(perro):
-    filas = [cuadros(perro, a) for a in FILAS]
+def disponibles():
+    """Animaciones que tienen los dos perros (la hoja de ambos usa las mismas filas)."""
+    return [a for a in FILAS if all(os.path.isdir(os.path.join(ORIGEN, p, a)) for p in ('hunter', 'tango'))]
+
+
+def armar(perro, anims):
+    filas = [cuadros(perro, a) for a in anims]
+    columnas = max(len(f) for f in filas)
     # Recorte común: la unión de lo dibujado en todos los cuadros.
     caja = None
     for fila in filas:
@@ -78,18 +97,39 @@ def armar(perro):
             if b:
                 caja = b if caja is None else (min(caja[0], b[0]), min(caja[1], b[1]), max(caja[2], b[2]), max(caja[3], b[3]))
     ancho, alto = caja[2] - caja[0], caja[3] - caja[1]
-    hoja = Image.new('RGBA', (ancho * COLUMNAS, alto * len(FILAS)))
+    hoja = Image.new('RGBA', (ancho * columnas, alto * len(anims)))
     for f, fila in enumerate(filas):
-        for c, im in enumerate(fila[:COLUMNAS]):
+        for c, im in enumerate(fila):
             hoja.alpha_composite(im.crop(caja), (c * ancho, f * alto))
     salida = os.path.join(DESTINO, f'perros_{perro}.png')
     hoja.save(salida)
     print(perro, 'celda', ancho, 'x', alto, '->', os.path.relpath(salida, AQUI))
-    return hoja
+    return hoja, {'celda': [ancho, alto], 'cuadros': [len(f) for f in filas]}
+
+
+SUENOS = ['hueso', 'pelota', 'salchicha', 'ardilla', 'gato', 'filete', 'corazon', 'croqueta']
+
+
+def armar_suenos():
+    """Los dibujitos de la nube de sueños, en una fila de cuadros iguales (res/drawable-nodpi/suenos.png)."""
+    ims = [Image.open(os.path.join(ORIGEN, 'suenos', f'{n}.png')).convert('RGBA') for n in SUENOS]
+    lado = max(max(i.size) for i in ims)
+    hoja = Image.new('RGBA', (lado * len(ims), lado))
+    for k, im in enumerate(ims):
+        hoja.alpha_composite(im, (k * lado + (lado - im.width) // 2, (lado - im.height) // 2))
+    hoja.save(os.path.join(DESTINO, 'suenos.png'))
+    print(len(ims), 'sueños ->', 'suenos.png')
 
 
 if __name__ == '__main__':
-    hojas = [armar(p) for p in ('hunter', 'tango')]
+    armar_suenos()
+    anims = disponibles()
+    resultado = {p: armar(p, anims) for p in ('hunter', 'tango')}
+    hojas = [h for h, _ in resultado.values()]
+    os.makedirs(os.path.dirname(INDICE), exist_ok=True)
+    with open(INDICE, 'w', encoding='utf-8') as f:
+        json.dump({'filas': anims, **{p: datos for p, (_, datos) in resultado.items()}}, f, indent=1)
+    print(len(anims), 'animaciones ->', os.path.relpath(INDICE, AQUI))
     if '--preview' in sys.argv:
         ruta = sys.argv[sys.argv.index('--preview') + 1]
         w = max(h.width for h in hojas)

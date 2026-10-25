@@ -163,6 +163,21 @@
             android:visibility="gone" />
     </LinearLayout>
 
+    <!-- Firma de la marca: discreta, arriba a la izquierda, solo en la pantalla de espera. -->
+    <TextView
+        android:id="@+id/brand"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="20dp"
+        android:alpha="0.8"
+        android:fontFamily="sans-serif-medium"
+        android:letterSpacing="0.35"
+        android:shadowColor="#99000000"
+        android:shadowRadius="4"
+        android:text="@string/brand"
+        android:textColor="@color/aviva_gold"
+        android:textSize="13sp" />
+
     <!-- Crédito del fondo de artista, discreto en la esquina, arriba de los perros. -->
     <TextView
         android:id="@+id/credit"

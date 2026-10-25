@@ -44,6 +44,7 @@ class MainActivity : Activity() {
     private lateinit var sky: SkyView
     private lateinit var art: ArtView
     private lateinit var credit: TextView
+    private lateinit var brand: View
     private lateinit var photos: PhotoFrameView
     private lateinit var scrim: View
     private lateinit var dogs: DogsView
@@ -102,6 +103,7 @@ class MainActivity : Activity() {
         sky = findViewById(R.id.sky)
         art = findViewById(R.id.art)
         credit = findViewById(R.id.credit)
+        brand = findViewById(R.id.brand)
         photos = findViewById(R.id.photos)
         scrim = findViewById(R.id.scrim)
         dogs = findViewById(R.id.dogs)
@@ -356,6 +358,7 @@ class MainActivity : Activity() {
         photos.stop()
         photos.visibility = View.GONE
         idle.visibility = View.GONE
+        brand.visibility = View.GONE
         header.visibility = View.VISIBLE
         lyricsScroll.visibility = View.VISIBLE
         // Sobre arte o carátula el velo es más ligero: que se luzca el fondo sin perder la letra.
@@ -703,6 +706,7 @@ class MainActivity : Activity() {
         lyricsScroll.visibility = View.GONE
         scrim.animate().alpha(0f).setDuration(600).start()
         idle.visibility = View.VISIBLE
+        brand.visibility = View.VISIBLE
         message.text = text
         message.visibility = if (text.isEmpty()) View.GONE else View.VISIBLE
         connect.visibility = if (withConnect) View.VISIBLE else View.GONE

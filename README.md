@@ -1,6 +1,6 @@
-# Letras
+# AVIVA · Letras
 
-App para una tablet vieja (Lenovo Tab 3 7, Android 5.1, 1 GB) que la convierte en una pantalla de la casa:
+Un proyecto de **AVIVA**. App para una tablet vieja (Lenovo Tab 3 7, Android 5.1, 1 GB) que la convierte en una pantalla de la casa:
 muestra la **letra sincronizada** de lo que suena en Spotify, sobre un fondo vivo, con Hunter y Tango
 paseando abajo. Cuando no suena nada: reloj, o marco de fotos.
 
@@ -19,7 +19,10 @@ paseando abajo. Cuando no suena nada: reloj, o marco de fotos.
   - Suena música: se ponen **audífonos**, pasean y al pararse **mueven la cabeza al ritmo** (con notitas) o se
     **sientan moviendo la cola**.
   - Se busca la letra: **corren**. Aparece la letra: **bailan** un momento.
-  - Pausa o nada sonando: se quedan parados y a los 25 s **se echan a dormir**.
+  - **De día** sin música: olfatean, se rascan, se estiran, mordisquean un hueso, juegan, ladran, se sacuden,
+    persiguen su cola, ruedan, miran al cielo… y a veces toman una siesta.
+  - **De noche** sin música: se duermen en distintas posiciones (echados, enroscados, de lado, como rana) y a
+    veces **sueñan**: mueven las patitas y sale una nube con un hueso, una pelota, una ardilla…
   - De noche llevan su lucecita.
 - **Marco de fotos** cuando no suena nada.
 
