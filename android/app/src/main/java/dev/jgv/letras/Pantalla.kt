@@ -104,6 +104,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private var weatherAt = 0L
     private var efemerides: List<Efemeride> = emptyList()
     private var efemeridesDay = -1
+    /** Solo debug: el clima que se enseña, para ver cada ícono. */
+    private var forcedWeatherCode: Int? = null
 
     // Lo que es solo de las vistas (no del estado): qué imagen toca, si ya hay una puesta y el dedo en la letra.
     private var imageIndex = -1
@@ -203,6 +205,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         if (changed({ it.folder }, { it.waiting })) layoutIdleClock(s)
         if (changed({ it.dato })) renderDato(s.dato)
         if (changed({ it.shownWeather })) weatherView.show(s.shownWeather)
+        // El cielo sigue el clima también detrás de la letra.
+        sky.weatherCode = s.weather?.code
         dogs.mood = s.dogMood
     }
 
@@ -248,8 +252,13 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         gestures.onTouchEvent(ev)
     }
 
-    /** Solo debug: hora del cielo, fase de la luna y fondo ("cielo", o el nombre de una carpeta) fijos. */
-    fun debugOverrides(hour: Float?, moonPhase: Float?, background: String?) {
+    /** Solo debug: hora del cielo, fase de la luna, fondo ("cielo", o el nombre de una carpeta) y clima (código WMO) fijos. */
+    fun debugOverrides(hour: Float?, moonPhase: Float?, background: String?, weatherCode: Int? = null) {
+        if (weatherCode != null) {
+            forcedWeatherCode = weatherCode
+            datosJob?.cancel()
+            datosJob = scope.launch { datosLoop() }
+        }
         if (hour != null) sky.forcedHour = hour
         if (moonPhase != null) {
             sky.forcedMoonPhase = moonPhase
@@ -400,6 +409,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             }
             // Clima de ayer no: si no se pudo actualizar en horas, mejor no enseñarlo.
             if (now - weatherAt > WEATHER_STALE_MS) weather = null
+            forcedWeatherCode?.let { code -> weather = (weather ?: Weather(18.0, code, 22.0, 11.0, 40, null, null)).copy(code = code) }
             val phase = sky.forcedMoonPhase ?: SkyView.moonPhase(System.currentTimeMillis())
             dispatch(Action.DatosChanged(Datos.cards(today, weather, phase, efemerides, nice), weather, now))
             delay(if (weather == null && clima.hasLocation) DATOS_RETRY_MS else DATOS_EVERY_MS)

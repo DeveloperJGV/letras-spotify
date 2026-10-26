@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
@@ -19,9 +18,9 @@ import kotlin.math.max
 import kotlin.math.sin
 
 /**
- * El clima de hoy, aparte del reloj: un dibujito que se mueve (sol que gira despacio, nubes que flotan, gotas que
- * caen, un rayo de vez en cuando; de noche, luna), la temperatura grande y abajo el cielo, máxima/mínima y la
- * probabilidad de lluvia.
+ * El clima de hoy, aparte del reloj: el ícono de Meteocons (Bas Milius, MIT) animado por capas (rayos del sol que
+ * giran, nubes que flotan, gotas que caen, el rayo que parpadea; de noche, luna), la temperatura grande y abajo el
+ * cielo, máxima/mínima y la probabilidad de lluvia.
  */
 class WeatherView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
 
@@ -67,7 +66,6 @@ class WeatherView @JvmOverloads constructor(context: Context, attrs: AttributeSe
         strokeCap = Paint.Cap.ROUND
     }
     private val moon = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(236, 238, 255) }
-    private val cloud = Paint(Paint.ANTI_ALIAS_FLAG)
     private val drop = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.rgb(140, 200, 255)
         strokeWidth = 2f * density
@@ -75,8 +73,8 @@ class WeatherView @JvmOverloads constructor(context: Context, attrs: AttributeSe
     }
     private val bolt = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(255, 232, 120) }
     private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val path = Path()
-    private val oval = RectF()
+    private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val dst = RectF()
 
     private var running = false
     private val tick = object : Runnable {
@@ -92,6 +90,8 @@ class WeatherView @JvmOverloads constructor(context: Context, attrs: AttributeSe
     }
 
     fun show(w: Weather?) {
+        // Otro clima: se sueltan las capas del anterior.
+        if (w?.code != weather?.code) bitmaps.clear()
         weather = w
         visibility = if (w == null) GONE else VISIBLE
         requestLayout()
@@ -161,103 +161,110 @@ class WeatherView @JvmOverloads constructor(context: Context, attrs: AttributeSe
         w.rainChance?.let { append("  ·  LLUVIA $it%") }
     }
 
+    /**
+     * El ícono (Meteocons, partido en capas en arte/meteocons): lo fijo y lo que se mueve. Los tiempos de las gotas,
+     * la niebla y el rayo son los del ícono animado original.
+     */
     private fun drawIcon(canvas: Canvas, sky: Sky, cx: Float, cy: Float, size: Float, t: Float) {
-        val r = size * 0.22f
         val isNight = night > 0.5f
         // Halo suave detrás (más de noche), como la pila y los perros.
         val halo = if (isNight) Color.rgb(143, 190, 255) else Color.rgb(255, 214, 140)
-        glow.shader = RadialGradient(cx, cy, size * 0.55f, Color.argb((40 + 50 * night).toInt(), Color.red(halo), Color.green(halo), Color.blue(halo)), Color.TRANSPARENT, Shader.TileMode.CLAMP)
-        canvas.drawCircle(cx, cy, size * 0.55f, glow)
+        glow.shader = RadialGradient(cx, cy, size * 0.5f, Color.argb((30 + 40 * night).toInt(), Color.red(halo), Color.green(halo), Color.blue(halo)), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        canvas.drawCircle(cx, cy, size * 0.5f, glow)
 
-        val hasCloud = sky != Sky.CLEAR
-        // El astro: arriba a la izquierda si hay nube enfrente, al centro si está despejado.
-        val ax = if (hasCloud) cx - size * 0.14f else cx
-        val ay = if (hasCloud) cy - size * 0.14f else cy
-        if (sky == Sky.CLEAR || sky == Sky.PARTLY) {
-            if (isNight) drawMoon(canvas, ax, ay, r * 1.1f) else drawSun(canvas, ax, ay, r, t)
+        val scene = when (sky) {
+            Sky.CLEAR -> if (isNight) "clear_night" else "clear_day"
+            Sky.PARTLY -> if (isNight) "partly_night" else "partly_day"
+            Sky.CLOUDY -> "overcast"
+            Sky.FOG -> "fog"
+            Sky.DRIZZLE -> "drizzle"
+            Sky.RAIN -> "rain"
+            Sky.STORM -> "storm"
+            Sky.SNOW -> "snow"
         }
-        if (!hasCloud) return
-
-        val dark = sky == Sky.RAIN || sky == Sky.STORM || sky == Sky.DRIZZLE
-        val drift = sin(t * 0.6f) * size * 0.03f
-        val ccx = cx + size * 0.06f + drift
-        val ccy = cy + size * 0.06f
-        if (sky == Sky.CLOUDY || dark) {
-            // Una nube de atrás, más oscura, para que se vea tupido.
-            drawCloud(canvas, ccx - size * 0.16f - drift * 0.5f, ccy - size * 0.12f, size * 0.7f, if (dark) Color.rgb(120, 130, 150) else Color.rgb(185, 195, 210))
+        // El dibujo de Meteocons ocupa el centro de su cuadro: se agranda para que llene el espacio del ícono.
+        val size = size * ZOOM
+        val left = cx - size / 2
+        val top = cy - size / 2
+        val u = size / VIEWBOX
+        fun layer(name: String, dx: Float = 0f, dy: Float = 0f, alpha: Int = 255, rotate: Float = 0f, px: Float = 64f, py: Float = 64f) {
+            val b = bitmap("wx_${scene}_$name") ?: return
+            canvas.save()
+            canvas.translate(left + dx * u, top + dy * u)
+            if (rotate != 0f) canvas.rotate(rotate, px * u, py * u)
+            dst.set(0f, 0f, size, size)
+            bitmapPaint.alpha = alpha
+            canvas.drawBitmap(b, null, dst, bitmapPaint)
+            canvas.restore()
         }
-        drawCloud(canvas, ccx, ccy, size * 0.82f, if (dark) Color.rgb(165, 175, 195) else Color.rgb(240, 243, 250))
-
-        when (sky) {
-            Sky.DRIZZLE, Sky.RAIN, Sky.STORM -> {
-                val n = if (sky == Sky.DRIZZLE) 3 else 5
-                val len = if (sky == Sky.DRIZZLE) size * 0.06f else size * 0.1f
-                for (i in 0 until n) {
-                    val phase = (t * (1.1f + 0.13f * i) + i * 0.29f) % 1f
-                    val x = ccx - size * 0.24f + i * size * 0.12f
-                    val y0 = ccy + size * 0.16f + phase * size * 0.28f
-                    drop.alpha = (255 * (1 - phase)).toInt()
-                    canvas.drawLine(x, y0, x - len * 0.3f, y0 + len, drop)
+        val drift = sin(t * 2 * PI.toFloat() / 6f) * 3f
+        when (scene) {
+            "clear_day" -> {
+                layer("rays", rotate = t * 18f % 360f)
+                layer("base")
+            }
+            "partly_day" -> {
+                layer("rays", rotate = t * 18f % 360f, px = 39f, py = 51f)
+                layer("base")
+                layer("cloud", dx = drift)
+            }
+            "clear_night" -> layer("base", rotate = sin(t * 2 * PI.toFloat() / 8f) * 6f)
+            "partly_night" -> {
+                layer("base", dy = sin(t * 2 * PI.toFloat() / 8f) * 1.5f)
+                layer("cloud", dx = drift)
+            }
+            "overcast" -> {
+                layer("back", dx = -drift * 0.6f)
+                layer("cloud", dx = drift)
+            }
+            "fog" -> {
+                layer("cloud")
+                // Las líneas van y vienen 3 unidades en 3 s, la segunda un poco después.
+                listOf(0f, 0.2f).forEachIndexed { i, begin ->
+                    val p = (((t - begin) / 3f) % 1f + 1f) % 1f
+                    layer("fx${i + 1}", dx = 3f * (0.5f - 0.5f * cos(2 * PI.toFloat() * p)))
                 }
-                if (sky == Sky.STORM && (t % 4f) < 0.25f) drawBolt(canvas, ccx, ccy + size * 0.2f, size * 0.3f)
             }
-            Sky.SNOW -> for (i in 0 until 5) {
-                val phase = (t * 0.4f + i * 0.21f) % 1f
-                val x = ccx - size * 0.24f + i * size * 0.12f + sin(t * 2 + i) * size * 0.02f
-                drop.alpha = (255 * (1 - phase)).toInt()
-                canvas.drawCircle(x, ccy + size * 0.18f + phase * size * 0.26f, 2f * density, drop)
+            else -> {
+                if (scene == "storm") {
+                    // El rayo parpadea como en el original: prendido casi siempre, con tres apagones cada 2 s.
+                    layer("bolt", alpha = if (boltOn((t % 2f) / 2f)) 255 else 0)
+                }
+                layer("cloud", dx = drift * 0.5f)
+                // Gotas (o copos): caen 20 unidades y se desvanecen, una tras otra.
+                val begins = if (scene == "snow") listOf(0.2f, 0.7f, 1.2f) else listOf(0f, 0.4f, 0.8f)
+                val dur = if (scene == "snow") 1.6f else 1f
+                begins.forEachIndexed { i, begin ->
+                    val p = (((t - begin) / dur) % 1f + 1f) % 1f
+                    val fall = p * p * (1.6f - 0.6f * p)
+                    val a = when {
+                        p < 0.15f -> p / 0.15f
+                        p > 0.85f -> (1 - p) / 0.15f
+                        else -> 1f
+                    }
+                    val sway = if (scene == "snow") sin((t + i) * 3f) * 1.5f else 0f
+                    layer("fx${i + 1}", dx = sway, dy = 20f * fall, alpha = (255 * a).toInt())
+                }
             }
-            Sky.FOG -> for (i in 0 until 3) {
-                val y = ccy + size * (0.18f + i * 0.08f)
-                val off = sin(t * 0.8f + i) * size * 0.05f
-                ray.color = Color.argb(150, 220, 225, 235)
-                canvas.drawLine(cx - size * 0.3f + off, y, cx + size * 0.3f + off, y, ray)
-            }
-            else -> {}
         }
-        ray.color = Color.rgb(255, 205, 90)
     }
 
-    private fun drawSun(canvas: Canvas, x: Float, y: Float, r: Float, t: Float) {
-        val turn = t * 0.25f
-        for (i in 0 until 8) {
-            val a = turn + i * (PI / 4).toFloat()
-            val pulse = 1f + 0.08f * sin(t * 2f + i)
-            canvas.drawLine(x + cos(a) * r * 1.45f, y + sin(a) * r * 1.45f, x + cos(a) * r * 1.9f * pulse, y + sin(a) * r * 1.9f * pulse, ray)
-        }
-        canvas.drawCircle(x, y, r, sun)
+    private fun boltOn(p: Float): Boolean = when {
+        p < 0.25f -> true
+        p < 0.33f -> false
+        p < 0.42f -> true
+        p < 0.5f -> false
+        p < 0.57f -> true
+        p < 0.63f -> false
+        else -> true
     }
 
-    private fun drawMoon(canvas: Canvas, x: Float, y: Float, r: Float) {
-        // Luna creciente: un círculo menos otro corrido.
-        path.reset()
-        oval.set(x - r, y - r, x + r, y + r)
-        path.addOval(oval, Path.Direction.CW)
-        val cut = Path().apply { addCircle(x + r * 0.55f, y - r * 0.3f, r * 0.85f, Path.Direction.CW) }
-        path.op(cut, Path.Op.DIFFERENCE)
-        canvas.drawPath(path, moon)
-    }
+    private val bitmaps = HashMap<String, android.graphics.Bitmap?>()
 
-    private fun drawCloud(canvas: Canvas, x: Float, y: Float, w: Float, color: Int) {
-        cloud.color = color
-        cloud.setShadowLayer(4 * density, 0f, 2 * density, Color.argb(70, 0, 0, 0))
-        val h = w * 0.32f
-        oval.set(x - w / 2, y - h / 2, x + w / 2, y + h / 2)
-        canvas.drawRoundRect(oval, h / 2, h / 2, cloud)
-        canvas.drawCircle(x - w * 0.14f, y - h * 0.45f, w * 0.2f, cloud)
-        canvas.drawCircle(x + w * 0.12f, y - h * 0.55f, w * 0.25f, cloud)
-    }
-
-    private fun drawBolt(canvas: Canvas, x: Float, y: Float, s: Float) {
-        path.reset()
-        path.moveTo(x + s * 0.1f, y - s * 0.5f)
-        path.lineTo(x - s * 0.25f, y + s * 0.05f)
-        path.lineTo(x, y + s * 0.05f)
-        path.lineTo(x - s * 0.1f, y + s * 0.5f)
-        path.lineTo(x + s * 0.25f, y - s * 0.05f)
-        path.lineTo(x, y - s * 0.05f)
-        path.close()
-        canvas.drawPath(path, bolt)
+    /** Solo se cargan las capas del clima que se ve (unos 100 KB cada una). */
+    private fun bitmap(name: String): android.graphics.Bitmap? = bitmaps.getOrPut(name) {
+        val id = resources.getIdentifier(name, "drawable", context.packageName)
+        if (id == 0) null else android.graphics.BitmapFactory.decodeResource(resources, id)
     }
 
     private fun skyOf(code: Int) = when (code) {
@@ -275,7 +282,10 @@ class WeatherView @JvmOverloads constructor(context: Context, attrs: AttributeSe
 
     private companion object {
         const val FRAME_MS = 60L
-        const val ICON = 76f
+        const val ICON = 96f
+        /** Los íconos de Meteocons miden 128 × 128. */
+        const val VIEWBOX = 128f
+        const val ZOOM = 1.45f
         const val GAP = 14f
         const val PAD = 14f
     }

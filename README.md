@@ -46,7 +46,9 @@ son de sus autores.
 - **Batería** junto al reloj: una pila que se llena con su color (verde, ámbar, rojo), con burbujas y un rayo que
   late mientras carga. Con la letra, si queda poca, sale junto al título.
 - **Clima** del otro lado del reloj ([Open-Meteo](https://open-meteo.com), sin clave): temperatura, cielo,
-  máxima/mínima y probabilidad de lluvia, con un dibujito que se mueve. Se pide cada media hora.
+  máxima/mínima y probabilidad de lluvia, con el ícono de [Meteocons](https://github.com/basmilius/meteocons)
+  animado por capas (rayos que giran, nubes que flotan, gotas que caen, el rayo que parpadea). Se pide cada media
+  hora.
 - **Tarjeta de datos** bajo el reloj, cambia cada 25 s: el cielo de hoy (fase de la luna, días para la llena,
   salida y puesta del sol), "un día como hoy" (Wikipedia en español), un dato geek y tus propias frases.
   En vertical, el clima y la pila van juntos abajo de la tarjeta.
@@ -56,6 +58,8 @@ son de sus autores.
 - **Fondos** (botón del cuadrito o doble toque para cambiar):
   - **Cielo según la hora:** amanecer, día con nubes, atardecer, noche con estrellas y la **luna en su fase de
     hoy** (creciente, llena, menguante…, calculada por la fecha).
+  - **Y según el clima de verdad:** despejado casi sin nubes; nublado, el cielo lleno y más gris; con lluvia cae
+    lluvia y el sol apenas se asoma; tormenta con relámpagos; niebla abajo; nieve (por si acaso).
   - **Una carpeta de imágenes:** cada carpeta de `Pictures/Letras/fondos` es una opción con su nombre (Lofi, Boda,
     Hunter y Tango…). Se ve igual con música y sin música; sin música cambia cada 2 minutos, como marco de fotos,
     con el reloj chico en la esquina. La flechita (›) de abajo pasa a la siguiente. Con la tablet parada usa las
@@ -184,6 +188,8 @@ cd android
   [PixelLab](https://pixellab.ai). Los cuadros originales están en `arte/pixellab/` y `arte/armar_perros.py` arma
   las hojas de la app (Hunter se recolorea a gris atigrado).
 - Letras: Spotify (vía Javbots) y [LRCLIB](https://lrclib.net).
+- Íconos del clima y forma de las nubes: [Meteocons](https://github.com/basmilius/meteocons) de Bas Milius (MIT,
+  `arte/meteocons/LICENSE`), partidos en capas con `arte/meteocons/split.py` y `render.mjs`.
 - Clima: [Open-Meteo](https://open-meteo.com) (CC BY 4.0). Efemérides: [Wikipedia en español](https://es.wikipedia.org) (CC BY-SA).
 - Fondos de artistas: de sus autores, con el crédito que se muestra en pantalla. No se incluyen en este repo.
 - Íconos de los botones: [Material Icons](https://fonts.google.com/icons) (Apache 2.0).
