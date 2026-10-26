@@ -40,6 +40,8 @@ FILAS = [
     'dj', 'guitar', 'maracas', 'keyboard', 'drums',
     # pantalla de datos y clima
     'present', 'newspaper', 'telescope', 'umbrella', 'sunglasses', 'scarf', 'scared', 'puddle',
+    # calor (Tango; los lentes de sol solo se le ven a Hunter)
+    'beach', 'coconut', 'icecream',
 ]
 INDICE = os.path.join(AQUI, '..', 'android', 'app', 'src', 'main', 'res', 'raw', 'perros.json')
 CUADROS = {

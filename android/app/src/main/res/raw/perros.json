@@ -38,7 +38,10 @@
   "sunglasses",
   "scarf",
   "scared",
-  "puddle"
+  "puddle",
+  "beach",
+  "coconut",
+  "icecream"
  ],
  "hunter": {
   "celda": [
@@ -84,7 +87,10 @@
    9,
    9,
    9,
-   9
+   9,
+   0,
+   0,
+   0
   ]
  },
  "tango": {
@@ -129,6 +135,9 @@
    9,
    9,
    0,
+   9,
+   9,
+   9,
    9,
    9,
    9

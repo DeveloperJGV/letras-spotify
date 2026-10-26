@@ -106,6 +106,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private var efemeridesDay = -1
     /** Solo debug: el clima que se enseña, para ver cada ícono. */
     private var forcedWeatherCode: Int? = null
+    private var forcedTempC: Double? = null
 
     // Lo que es solo de las vistas (no del estado): qué imagen toca, si ya hay una puesta y el dedo en la letra.
     private var imageIndex = -1
@@ -259,9 +260,10 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     }
 
     /** Solo debug: hora del cielo, fase de la luna, fondo ("cielo", o el nombre de una carpeta) y clima (código WMO) fijos. */
-    fun debugOverrides(hour: Float?, moonPhase: Float?, background: String?, weatherCode: Int? = null) {
+    fun debugOverrides(hour: Float?, moonPhase: Float?, background: String?, weatherCode: Int? = null, tempC: Double? = null) {
         if (weatherCode != null) {
             forcedWeatherCode = weatherCode
+            forcedTempC = tempC
             datosJob?.cancel()
             datosJob = scope.launch { datosLoop() }
         }
@@ -415,7 +417,10 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             }
             // Clima de ayer no: si no se pudo actualizar en horas, mejor no enseñarlo.
             if (now - weatherAt > WEATHER_STALE_MS) weather = null
-            forcedWeatherCode?.let { code -> weather = (weather ?: Weather(18.0, code, 22.0, 11.0, 40, null, null)).copy(code = code) }
+            forcedWeatherCode?.let { code ->
+                val w = (weather ?: Weather(18.0, code, 22.0, 11.0, 40, null, null)).copy(code = code)
+                weather = forcedTempC?.let { w.copy(tempC = it) } ?: w
+            }
             val phase = sky.forcedMoonPhase ?: SkyView.moonPhase(System.currentTimeMillis())
             dispatch(Action.DatosChanged(Datos.cards(today, weather, phase, efemerides, nice), weather, now))
             delay(if (weather == null && clima.hasLocation) DATOS_RETRY_MS else DATOS_EVERY_MS)

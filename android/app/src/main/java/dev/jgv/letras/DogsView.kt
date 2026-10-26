@@ -77,6 +77,8 @@ class DogsView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         "telescope" to Style(false, 5f, loopFrom = 2), "umbrella" to Style(false, 5f, loopFrom = 1),
         "sunglasses" to Style(false, 4f, loopFrom = 2), "scarf" to Style(false, 6f, loopFrom = 1),
         "scared" to Style(false, 8f, loopFrom = 2), "puddle" to Style(false, 9f),
+        "beach" to Style(false, 5f, loopFrom = 6), "coconut" to Style(false, 5f, loopFrom = 3),
+        "icecream" to Style(false, 5f, loopFrom = 3),
     )
 
     /** Al ritmo: cuántos pulsos dura una vuelta de la parte que se repite. */
@@ -117,7 +119,13 @@ class DogsView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 out += Activity("puddle", 3f, 5f, 2)
             }
             in 95..99 -> out += Activity("scared", 5f, 9f, 6)
-            0, 1 -> if (t != null && t >= WARM_C) out += Activity("sunglasses", 10f, 20f, 4)
+            // Calor: Hunter lentes de sol; Tango playa, coco o paleta (cada quien la que tenga).
+            0, 1, 2 -> if (t != null && t >= WARM_C) {
+                out += Activity("sunglasses", 10f, 20f, 7)
+                out += Activity("beach", 15f, 30f, 6)
+                out += Activity("coconut", 8f, 14f, 4)
+                out += Activity("icecream", 8f, 14f, 4)
+            }
         }
         if (t != null && t <= COLD_C) out += Activity("scarf", 8f, 14f, 4)
         return out

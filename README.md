@@ -78,7 +78,7 @@ son de sus autores.
     veces **sueñan**: mueven las patitas y sale una nube con un hueso, una pelota, una ardilla…
   - De noche llevan su lucecita; de día, un contorno claro para que se vean sobre cualquier fondo.
   - **Con el clima:** si llueve sacan el paraguas o brincan en los charcos; con tormenta se tapan los ojos; con
-    frío, bufanda; en día despejado y caluroso, Hunter se pone lentes de sol. De noche despejada, a veces sacan
+    frío, bufanda; en día caluroso, Hunter se pone lentes de sol y Tango se va a la playa (toalla y sombrilla, coco o paleta). De noche despejada, a veces sacan
     el telescopio.
   - **Presentan la tarjeta de datos:** cuando cambia, uno la señala; con "un día como hoy" lee el periódico.
   - Con **luna llena** le aúllan antes de dormirse.
