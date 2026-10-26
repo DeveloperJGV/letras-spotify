@@ -63,6 +63,8 @@ class Protector : DreamService(), Pantalla.Host {
 
     override fun exit() = finish()
 
+    override fun setDim(dim: Boolean) = dimWindow(window, dim)
+
     private fun openApp(menu: Pantalla.Menu?) {
         startActivity(
             Intent(this, MainActivity::class.java)

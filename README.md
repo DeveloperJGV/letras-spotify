@@ -42,6 +42,9 @@ son de sus autores.
 - **Controles de la música** (con Javbots): anterior, pausa, siguiente y volumen del Spotify de la PC, abajo,
   arriba de los perros.
 - **En pausa** más de 20 s pasa al reloj con el botón de play a la mano.
+- **Modo tranquilo de noche:** si de noche suena música para dormir (tempo lento, o lofi, ambient, piano,
+  lluvia… en el título, artista o disco), baja el brillo, oscurece la letra y Hunter y Tango se acuestan a escuchar
+  con audífonos hasta dormirse. Si hay una carpeta `Dormir` en tus fondos, usa esas imágenes. Se apaga en Opciones.
 - **Reloj** con brillo según el cielo (azul de noche, durazno de día), los dos puntos latiendo y la fecha abajo.
 - **Batería** junto al reloj: una pila que se llena con su color (verde, ámbar, rojo), con burbujas y un rayo que
   late mientras carga. Con la letra, si queda poca, sale junto al título.
@@ -124,6 +127,7 @@ Te quiero
 | Arte                           | completo (con relleno borroso) · llenar la pantalla       |
 | Cambiar imagen (con música)    | con cada canción · cada 5, 15 o 60 min                    |
 | Oscurecer detrás de la letra   | poco · medio · mucho                                      |
+| Modo tranquilo de noche        | automático · apagado                                      |
 | Siguiente imagen               | (también la flechita junto al crédito)                    |
 | Protector de pantalla          | abre los ajustes de Android para elegirlo                 |
 | Cómo se usa                    | la ayuda                                                  |

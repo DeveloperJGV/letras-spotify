@@ -222,4 +222,39 @@ class ScreenStateTest {
         val updated = listOf(Dato(Dato.Kind.SKY, "EL CIELO DE HOY", "Luna y sol")) + tres.drop(1)
         assertEquals("UN DÍA COMO HOY", reduce(s, Action.DatosChanged(updated, null, now = 30_000)).state.dato?.title)
     }
+
+    private fun calmSong(tempo: Float? = 70f, title: String = "Canción") =
+        song().copy(title = title, tempo = tempo)
+
+    @Test
+    fun `modo tranquilo de noche con musica lenta`() {
+        val playing = reduce(ScreenState(), javbots(calmSong(), synced)).state
+        assertFalse(reduce(playing, Action.Tick(1_000, night = 0.2f)).state.quiet)
+        val night = reduce(playing, Action.Tick(1_000, night = 0.9f)).state
+        assertTrue(night.quiet)
+        assertEquals(DogsView.Mood.SLEEPY, night.dogMood)
+        // Rápida y sin palabras de dormir: no.
+        val fast = reduce(night, javbots(calmSong(tempo = 128f).copy(id = "b"), synced)).state
+        assertFalse(fast.quiet)
+        // Rápida pero "lofi": sí.
+        assertTrue(reduce(night, javbots(calmSong(tempo = 128f, title = "Lofi para dormir").copy(id = "c"), synced)).state.quiet)
+    }
+
+    @Test
+    fun `modo tranquilo apagado en opciones`() {
+        val s = run(ScreenState(), javbots(calmSong(), synced), Action.Tick(1_000, night = 0.9f), Action.ToggleQuiet).state
+        assertFalse(s.quiet)
+    }
+
+    @Test
+    fun `en modo tranquilo se usa la carpeta de dormir`() {
+        val start = ScreenState(folder = "Lofi", sleepFolder = "Dormir")
+        val r = run(start, javbots(calmSong(), synced), Action.Tick(1_000, night = 0.9f))
+        assertEquals("Dormir", r.state.activeFolder)
+        assertTrue(Effect.NextImage in r.effects)
+        // Amanece: regresa a la suya.
+        val day = reduce(r.state, Action.Tick(2_000, night = 0.1f))
+        assertEquals("Lofi", day.state.activeFolder)
+        assertTrue(Effect.NextImage in day.effects)
+    }
 }

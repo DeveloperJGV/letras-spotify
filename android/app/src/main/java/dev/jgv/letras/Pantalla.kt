@@ -42,6 +42,15 @@ import java.io.IOException
  * fuente, el paso del tiempo, la batería, los botones), se dibuja el estado que regresa ([render]) y se hacen sus
  * efectos ([perform]: buscar la letra, bajar la portada, cambiar la imagen, mandar un botón a la PC).
  */
+/** Modo tranquilo: brillo bajo en la ventana (no toca el ajuste del sistema); false lo regresa. */
+fun dimWindow(window: android.view.Window, dim: Boolean) {
+    window.attributes = window.attributes.apply {
+        screenBrightness = if (dim) QUIET_BRIGHTNESS else android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+    }
+}
+
+private const val QUIET_BRIGHTNESS = 0.12f
+
 class Pantalla(private val context: Context, root: View, private val host: Host) {
 
     /** Lo que solo puede hacer quien la muestra (la app abre menús e inicia sesión; el protector abre la app). */
@@ -50,6 +59,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         fun openMenu(menu: Menu)
         fun startLogin()
         fun exit()
+        /** Modo tranquilo: bajar el brillo de la pantalla (true) o dejar el del sistema (false). */
+        fun setDim(dim: Boolean)
     }
 
     enum class Menu { HELP, OPTIONS }
@@ -167,6 +178,11 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             if (bottom - top != oldBottom - oldTop) layoutLyricsArea()
         }
         header.addOnLayoutChangeListener(relayout)
+        // El título y "En pausa" / "MODO TRANQUILO" terminan antes de los botones de arriba (3, o 4 en el protector).
+        root.findViewById<View>(R.id.buttons).addOnLayoutChangeListener { v, l, _, r, _, _, _, _, _ ->
+            val end = v.width + dp(16)
+            if (r - l > 0 && header.paddingEnd != end) header.setPaddingRelative(header.paddingStart, header.paddingTop, end, header.paddingBottom)
+        }
         dogs.addOnLayoutChangeListener(relayout)
         controls.addOnLayoutChangeListener(relayout)
         lyricsScroll.addOnLayoutChangeListener(relayout)
@@ -198,9 +214,15 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             highlight(s.currentLine)
         }
         if (changed({ it.fitImage })) art.fit = s.fitImage
-        if (changed({ it.scrimLevel }, { it.showingLyrics })) {
-            // El velo solo va con la letra: que se luzca la imagen sin perder lo que se lee.
-            scrim.animate().alpha(if (s.showingLyrics) SCRIM_ALPHAS[s.scrimLevel] else 0f).setDuration(600).start()
+        if (changed({ it.scrimLevel }, { it.showingLyrics }, { it.quiet })) {
+            // El velo solo va con la letra: que se luzca la imagen sin perder lo que se lee. En modo tranquilo, a fondo.
+            val alpha = if (!s.showingLyrics) 0f else if (s.quiet) 1f else SCRIM_ALPHAS[s.scrimLevel]
+            scrim.animate().alpha(alpha).setDuration(1500).start()
+        }
+        if (changed({ it.quiet })) {
+            host.setDim(s.quiet)
+            lyricsContainer.animate().alpha(if (s.quiet) QUIET_LYRICS_ALPHA else 1f).setDuration(1500).start()
+            renderTrackState(s)
         }
         if (changed({ it.battery }, { it.showingLyrics })) renderBattery(s)
         if (changed({ it.folder }, { it.waiting })) layoutIdleClock(s)
@@ -233,7 +255,9 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     // ---- Ciclo de vida (lo llaman la Activity o el protector) ----
 
     fun start() {
-        if (state.folder != null && !imageShown) nextImage()
+        // La carpeta para dormir puede aparecer o desaparecer entre una vez y otra.
+        dispatch(Action.SleepFolderFound(ArtView.folders().firstOrNull { it.equals(SLEEP_FOLDER, ignoreCase = true) }))
+        if (state.activeFolder != null && !imageShown) nextImage()
         // La batería llega al registrarse (es un aviso "pegajoso") y luego cada que cambia.
         context.registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))?.let(::onBattery)
         refresh()
@@ -242,6 +266,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
 
     fun stop() {
         stopLoops()
+        host.setDim(false)
         datosJob?.cancel()
         try {
             context.unregisterReceiver(batteryReceiver)
@@ -303,13 +328,13 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
      * Solo debug: simula "De Música Ligera" sonando desde el segundo indicado, sin Spotify ni Javbots.
      * adb shell am start -n dev.jgv.letras/.MainActivity --ei demo 40 [--ef hora 19.5] [--ef luna 0.5]
      */
-    fun startDemo(seconds: Int) {
+    fun startDemo(seconds: Int, tempo: Float = 128f) {
         stopLoops()
         val now = SystemClock.elapsedRealtime()
         val demo = NowPlaying(
             id = "demo", title = "De Música Ligera", artists = listOf("Soda Stereo"), album = "Canción Animal",
             durationMs = 212_000, progressMs = seconds * 1000L, isPlaying = true, coverUrl = null, sampledAt = now,
-            tempo = 128f,
+            tempo = tempo,
         )
         dispatch(Action.Polled(PollResult.Playing(demo), now))
         startTicker()
@@ -376,8 +401,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     /** El tiempo pasa: el estado (renglón, pausa larga, cambio de imagen) y lo que se mueve solo en las vistas. */
     private fun tick() {
         val now = SystemClock.elapsedRealtime()
-        dispatch(Action.Tick(now))
         val darkness = SkyView.darkness(sky.forcedHour ?: SkyView.currentHour())
+        dispatch(Action.Tick(now, darkness))
         dogs.night = darkness
         clock.night = darkness
         battery.night = darkness
@@ -434,7 +459,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         lyricsJob = scope.launch {
             val found = try {
                 withContext(Dispatchers.IO) { LrcLib.find(t) }
-            } catch (_: IOException) {
+            } catch (e: IOException) {
+                android.util.Log.w("Letras", "LRCLIB: $e")
                 null
             } catch (_: org.json.JSONException) {
                 null
@@ -486,7 +512,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
 
     /** Otra imagen de la carpeta (al azar, sin repetir la anterior), con su crédito si lo trae el nombre. */
     private fun nextImage() {
-        val folder = state.folder ?: return
+        val folder = state.activeFolder ?: return
         imageJob?.cancel()
         imageJob = scope.launch {
             // El ArtView puede estar oculto (mide 0): se pregunta a la pantalla.
@@ -501,7 +527,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             imageIndex = if (files.size == 1) 0 else (imageIndex + 1 + (Math.random() * (files.size - 1)).toInt()) % files.size
             val file = files[imageIndex]
             val decoded = withContext(Dispatchers.IO) { art.decode(file) } ?: return@launch
-            if (state.folder != folder) return@launch
+            if (state.activeFolder != folder) return@launch
             art.animate().alpha(0f).setDuration(if (art.visibility == View.VISIBLE) 400 else 0).withEndAction {
                 art.show(decoded)
                 imageShown = true
@@ -581,6 +607,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         val b = s.battery
         trackState.text = when {
             s.track?.isPlaying == false -> context.getString(R.string.paused)
+            s.quiet -> context.getString(R.string.quiet_label)
             b != null && b.low -> context.getString(R.string.battery_percent, b.percent)
             else -> ""
         }
@@ -810,6 +837,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
                 else context.getString(R.string.opt_every_min, s.imageEveryMin),
             ),
             context.getString(R.string.opt_scrim, context.resources.getStringArray(R.array.scrim_levels)[s.scrimLevel]),
+            context.getString(R.string.opt_quiet, context.getString(if (s.quietEnabled) R.string.quiet_auto else R.string.quiet_off)),
             context.getString(R.string.opt_next_art),
             context.getString(R.string.help_screensaver),
             context.getString(R.string.help_title),
@@ -827,20 +855,21 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
                     1 -> dispatch(Action.ToggleFit)
                     2 -> dispatch(Action.CycleImageEvery)
                     3 -> dispatch(Action.CycleScrim)
-                    4 -> {
+                    4 -> dispatch(Action.ToggleQuiet)
+                    5 -> {
                         if (state.folder == null) backgrounds().getOrNull(1)?.let { dispatch(Action.BackgroundChosen(it, now)) }
                         else dispatch(Action.NextImage(now))
                         return@setItems
                     }
-                    5 -> {
+                    6 -> {
                         openScreensaverSettings(activity)
                         return@setItems
                     }
-                    6 -> {
+                    7 -> {
                         showHelp(activity)
                         return@setItems
                     }
-                    7 -> {
+                    8 -> {
                         onLogout()
                         return@setItems
                     }
@@ -885,6 +914,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             fitImage = p.getBoolean(KEY_FIT, true),
             imageEveryMin = p.getInt(KEY_EVERY, 0),
             scrimLevel = p.getInt(KEY_SCRIM, 1).coerceIn(0, ScreenState.SCRIM_LEVELS - 1),
+            quietEnabled = p.getBoolean(KEY_QUIET, true),
         )
     }
 
@@ -894,6 +924,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             .putBoolean(KEY_FIT, state.fitImage)
             .putInt(KEY_EVERY, state.imageEveryMin)
             .putInt(KEY_SCRIM, state.scrimLevel)
+            .putBoolean(KEY_QUIET, state.quietEnabled)
             .apply()
     }
 
@@ -913,6 +944,11 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         const val KEY_FIT = "arte_completo"
         const val KEY_EVERY = "arte_cada_min"
         const val KEY_SCRIM = "velo"
+        const val KEY_QUIET = "modo_tranquilo"
+        /** La letra en modo tranquilo: más suave. */
+        const val QUIET_LYRICS_ALPHA = 0.75f
+        /** Carpeta de fondos que usa el modo tranquilo, si existe. */
+        const val SLEEP_FOLDER = "Dormir"
         /** Velo detrás de la letra: poco, medio, mucho. */
         val SCRIM_ALPHAS = floatArrayOf(0.45f, 0.7f, 1f)
         /** Luna llena (o casi): de noche, antes de dormirse, aúllan. */

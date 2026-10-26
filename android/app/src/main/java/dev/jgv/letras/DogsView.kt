@@ -46,6 +46,8 @@ class DogsView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         RUN,
         /** Pausa o nada sonando: rutina de día o de noche. */
         REST,
+        /** Modo tranquilo: música para dormir; se acuestan a escuchar con audífonos y se van quedando dormidos. */
+        SLEEPY,
     }
 
     /**
@@ -96,6 +98,10 @@ class DogsView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         Activity("howl", 2.5f, 4f, 1), Activity("listen_lie", 8f, 15f, 2),
         Activity("dj", 10f, 18f, 3), Activity("guitar", 10f, 18f, 3), Activity("maracas", 6f, 10f, 2),
         Activity("keyboard", 10f, 18f, 3), Activity("drums", 6f, 10f, 2),
+    )
+    private val sleepyActivities = listOf(
+        Activity("listen_lie", 15f, 30f, 6), Activity("sleep_curl", 20f, 40f, 2), Activity("sleep", 20f, 40f, 2),
+        Activity("yawn", 0f, 0f, 1),
     )
     private val dayActivities = listOf(
         Activity("idle", 3f, 6f, 4), Activity("sniff", 0f, 0f, 3, walk = true), Activity("walk", 0f, 0f, 2, walk = true),
@@ -462,7 +468,7 @@ class DogsView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             hugging = true
             hugFaceRight = faceRight
             partyLeft = 0f
-            walkTo(spot, width * 0.15f, if (mood == Mood.STROLL) "aud_walk" else "walk")
+            walkTo(spot, width * 0.15f, if (mood == Mood.STROLL || mood == Mood.SLEEPY) "aud_walk" else "walk")
         }
 
         fun update(dt: Float, w: Float) {
@@ -519,7 +525,7 @@ class DogsView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 mood == Mood.RUN -> runAcross(w, fresh = true)
                 // Se quedaron fuera de la pantalla (venían corriendo): regresan a su lugar.
                 x < size / 2 || x > w - size / 2 ->
-                    walkTo(startX * w, w * 0.12f, if (mood == Mood.STROLL) "aud_walk" else "walk")
+                    walkTo(startX * w, w * 0.12f, if (mood == Mood.STROLL || mood == Mood.SLEEPY) "aud_walk" else "walk")
                 else -> {
                     moving = false
                     activityLeft = 0f
@@ -532,6 +538,7 @@ class DogsView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             when (mood) {
                 Mood.RUN -> runAcross(w, fresh = false)
                 Mood.STROLL -> start(pick(musicActivities), w)
+                Mood.SLEEPY -> start(pick(sleepyActivities), w)
                 Mood.REST -> when {
                     night <= 0.5f -> start(pick(dayActivities + weatherActivities()), w)
                     restTime < SLEEP_AFTER_SEC -> {

@@ -67,14 +67,31 @@ data class ScreenState(
     val datoSince: Long = 0,
     /** El clima de hoy (null = todavía no llega, o sin red hace horas). */
     val weather: Weather? = null,
+    /** Qué tan de noche es (0 = día, 1 = noche), según el cielo. */
+    val night: Float = 0f,
+    /** El modo tranquilo puede prenderse solo (opción). */
+    val quietEnabled: Boolean = true,
+    /** La carpeta de fondos para dormir ("Dormir"), si existe. */
+    val sleepFolder: String? = null,
 ) {
     val showingLyrics get() = waiting == null
+
+    /**
+     * Modo tranquilo: de noche, con música para dormir sonando (lenta, o lofi, ambient, piano, lluvia…). Baja el
+     * brillo, oscurece, Hunter y Tango se acuestan a escuchar y, si hay carpeta "Dormir", se usan sus imágenes.
+     */
+    val quiet: Boolean
+        get() = quietEnabled && showingLyrics && track?.isPlaying == true && night >= QUIET_NIGHT && isCalm(track)
+
+    /** La carpeta que se ve ahora: la de dormir en modo tranquilo (si hay), si no la que se escogió. */
+    val activeFolder: String? get() = if (quiet && sleepFolder != null) sleepFolder else folder
 
     /** Hunter y Tango: corren mientras se busca la letra, pasean y tocan si suena, descansan si no. */
     val dogMood: DogsView.Mood
         get() = when {
             track == null || !showingLyrics -> DogsView.Mood.REST
             lyrics == null -> DogsView.Mood.RUN
+            quiet -> DogsView.Mood.SLEEPY
             track.isPlaying -> DogsView.Mood.STROLL
             else -> DogsView.Mood.REST
         }
@@ -100,6 +117,20 @@ data class ScreenState(
         const val SCRIM_LEVELS = 3
         /** Cuánto se ve cada tarjeta de datos. */
         const val DATO_MS = 25_000L
+        /** Desde qué tan de noche (0..1) puede entrar el modo tranquilo. */
+        const val QUIET_NIGHT = 0.6f
+        /** Hasta este tempo una canción cuenta como tranquila. */
+        const val CALM_BPM = 85f
+        private val CALM_WORDS = Regex(
+            "sleep|dormir|duerme|lo-?fi|ambient|calm|relax|chill|piano|rain|lluvia|noche|night|lullaby|cuna|" +
+                "meditat|medita|soft|dream|sueño|quiet|tranquil|white noise|ruido blanco",
+            RegexOption.IGNORE_CASE,
+        )
+
+        /** Canción tranquila: tempo lento (si se sabe) o palabras de música para dormir en título, artista o disco. */
+        fun isCalm(t: NowPlaying): Boolean =
+            (t.tempo?.let { it > 0f && it <= CALM_BPM } ?: false) ||
+                CALM_WORDS.containsMatchIn("${t.title} ${t.artists.joinToString(" ")} ${t.album}")
     }
 }
 
@@ -108,8 +139,8 @@ sealed interface Action {
     data class Polled(val result: PollResult, val now: Long, val viaJavbots: Boolean = false) : Action
     /** Llegó la letra de LRCLIB para [trackId]; null = falló la red. */
     data class LyricsLoaded(val trackId: String, val lyrics: Lyrics?) : Action
-    /** Pasa el tiempo (unas 7 veces por segundo). */
-    data class Tick(val now: Long) : Action
+    /** Pasa el tiempo (unas 7 veces por segundo); [night], qué tan de noche es según el cielo. */
+    data class Tick(val now: Long, val night: Float? = null) : Action
     data class BatteryChanged(val battery: Battery) : Action
     /** Se armaron otra vez las tarjetas (llegó el clima, cambió el día…). */
     data class DatosChanged(val datos: List<Dato>, val weather: Weather?, val now: Long) : Action
@@ -120,6 +151,9 @@ sealed interface Action {
     data object ToggleFit : Action
     data object CycleImageEvery : Action
     data object CycleScrim : Action
+    data object ToggleQuiet : Action
+    /** Al arrancar: si hay carpeta de fondos para dormir. */
+    data class SleepFolderFound(val folder: String?) : Action
     /** Un botón de la música: previous, togglePlay, next, volumeUp, volumeDown. */
     data class Control(val command: String) : Action
 }
@@ -143,10 +177,26 @@ sealed interface Effect {
 
 data class Result(val state: ScreenState, val effects: List<Effect> = emptyList())
 
-fun reduce(s: ScreenState, action: Action): Result = when (action) {
+/**
+ * El estado nuevo y sus efectos. Si cambió la carpeta que se ve (entró o salió el modo tranquilo con su carpeta
+ * de dormir), también se cambia la imagen.
+ */
+fun reduce(s: ScreenState, action: Action): Result {
+    val r = reduceAction(s, action)
+    val folder = r.state.activeFolder
+    if (folder == s.activeFolder || r.effects.any { it == Effect.NextImage || it == Effect.HideImage }) return r
+    val now = when (action) {
+        is Action.Tick -> action.now
+        is Action.Polled -> action.now
+        else -> r.state.lastImageAt
+    }
+    return Result(r.state.copy(lastImageAt = now), r.effects + if (folder == null) Effect.HideImage else Effect.NextImage)
+}
+
+private fun reduceAction(s: ScreenState, action: Action): Result = when (action) {
     is Action.Polled -> polled(s, action)
     is Action.LyricsLoaded -> lyricsLoaded(s, action)
-    is Action.Tick -> tick(s, action.now)
+    is Action.Tick -> tick(if (action.night != null) s.copy(night = action.night) else s, action.now)
     is Action.BatteryChanged -> Result(s.copy(battery = action.battery))
     is Action.DatosChanged -> datosChanged(s, action)
     is Action.NeedsSetup -> Result(s.copy(waiting = action.waiting, track = null, canControl = false))
@@ -155,13 +205,15 @@ fun reduce(s: ScreenState, action: Action): Result = when (action) {
         listOf(if (action.folder == null) Effect.HideImage else Effect.NextImage, Effect.SavePrefs, Effect.AnnounceBackground),
     )
     is Action.NextImage ->
-        if (s.folder == null) Result(s) else Result(s.copy(lastImageAt = action.now), listOf(Effect.NextImage))
+        if (s.activeFolder == null) Result(s) else Result(s.copy(lastImageAt = action.now), listOf(Effect.NextImage))
     Action.ToggleFit -> Result(s.copy(fitImage = !s.fitImage), listOf(Effect.SavePrefs))
     Action.CycleImageEvery -> {
         val options = ScreenState.IMAGE_EVERY_OPTIONS
         Result(s.copy(imageEveryMin = options[(options.indexOf(s.imageEveryMin) + 1) % options.size]), listOf(Effect.SavePrefs))
     }
     Action.CycleScrim -> Result(s.copy(scrimLevel = (s.scrimLevel + 1) % ScreenState.SCRIM_LEVELS), listOf(Effect.SavePrefs))
+    Action.ToggleQuiet -> Result(s.copy(quietEnabled = !s.quietEnabled), listOf(Effect.SavePrefs))
+    is Action.SleepFolderFound -> Result(s.copy(sleepFolder = action.folder))
     is Action.Control -> Result(s, listOf(Effect.SendControl(action.command)))
 }
 
@@ -191,7 +243,7 @@ private fun playing(s: ScreenState, r: PollResult.Playing, now: Long): Result {
         // Canción nueva: se busca su letra y, si el fondo cambia con cada canción, otra imagen.
         next = next.copy(lyricsForId = t.id, lyrics = null, lyricsFailed = false, currentLine = -1)
         if (!r.sourceHandlesLyrics) effects += Effect.FindLyrics(t)
-        if (s.folder != null && s.imageEveryMin == 0) {
+        if (s.activeFolder != null && s.imageEveryMin == 0) {
             next = next.copy(lastImageAt = now)
             effects += Effect.NextImage
         }
@@ -247,7 +299,7 @@ private fun tick(s: ScreenState, now: Long): Result {
     val effects = mutableListOf<Effect>()
     // Con música: con cada canción o cada N minutos. Sin música: cada pocos minutos, como marco de fotos.
     val every = if (s.showingLyrics) s.imageEveryMin * 60_000L else ScreenState.IDLE_IMAGE_MS
-    if (s.folder != null && every > 0 && now - s.lastImageAt > every) {
+    if (s.activeFolder != null && every > 0 && now - s.lastImageAt > every) {
         next = next.copy(lastImageAt = now)
         effects += Effect.NextImage
     }
