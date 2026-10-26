@@ -107,9 +107,23 @@ object Datos {
         else -> "—"
     }
 
+    /**
+     * De todo lo que pasó un día como hoy, las que se disfrutan en la sala: fuera guerras, muertes y desastres;
+     * primero la tecnología, la música, el cine, el espacio y México. Cortas (caben en la tarjeta), sin repetir año.
+     */
+    fun niceEfemerides(all: List<Efemeride>, max: Int = 4): List<Efemeride> = all
+        .map { it.copy(text = cleanEfemeride(it.text)) }
+        .filter { it.text.length in 20..MAX_EFEMERIDE && !SAD.containsMatchIn(it.text) }
+        .distinctBy { it.year ?: it.text }
+        .sortedByDescending { e -> GOOD.findAll(e.text).count() + if (MEXICO.containsMatchIn(e.text)) 2 else 0 }
+        .take(max)
+        .sortedBy { it.year ?: 0 }
+
     /** "Nace Pablo Picasso (en la imagen), pintor." → sin lo de la imagen, que aquí no se ve. */
     fun cleanEfemeride(text: String): String =
         text.replace(Regex("\\s*\\(en (la|las) (imagen|imágenes|foto|fotos)\\)"), "").trim()
+            // Los de "events" empiezan en minúscula ("en Chile se…").
+            .replaceFirstChar { it.uppercaseChar() }
 
     /**
      * La lista propia (Pictures/Letras/datos.txt), un renglón por cosa:
@@ -132,6 +146,20 @@ object Datos {
     private fun deg(c: Double) = "${Math.round(c)}°"
 
     const val SYNODIC_DAYS = 29.53f
+    private const val MAX_EFEMERIDE = 170
+    private val SAD = Regex(
+        "guerra|batalla|bombarde|invad|invasi|ataque|atentado|masacre|matanza|asesin|ejecut|fusil|genocid|nazi|" +
+            "holocausto|muere|muer|fallec|víctimas|terremoto|sismo|huracán|tsunami|incendio|naufrag|accidente|" +
+            "explosi|desastre|epidemia|pandemia|golpe de estado|dictad|secuestr|tortur|condena|crimen|militar|ejército",
+        RegexOption.IGNORE_CASE,
+    )
+    private val GOOD = Regex(
+        "lanza|present|estren|inaugur|descubr|publica|fund|primer|récord|videojuego|álbum|disco|canción|músic|" +
+            "banda|película|cine|computador|internet|software|sistema operativo|web|satélite|nasa|espacial|luna|" +
+            "planeta|cometa|telescopio|científic|invent|patente|museo|premio|nobel|arte|pint|libro|novela|perro",
+        RegexOption.IGNORE_CASE,
+    )
+    private val MEXICO = Regex("méxic|mexican", RegexOption.IGNORE_CASE)
 }
 
 /** Datos geek: los de fecha fija y uno al día de una lista. */

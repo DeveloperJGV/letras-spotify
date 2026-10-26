@@ -51,6 +51,20 @@ class DatosTest {
     }
 
     @Test
+    fun `efemerides bonitas primero y sin guerras`() {
+        val all = listOf(
+            Efemeride(1936, "Se firma un tratado que se convierte en el Pacto del Eje al unirse Japón en la guerra."),
+            Efemeride(2012, "en Silicon Valley, la empresa Microsoft anuncia el lanzamiento del sistema operativo Windows 8."),
+            Efemeride(2010, "en la isla de Java sucede un terremoto que mata a 796 personas."),
+            Efemeride(1881, "Nace Pablo Picasso (en la imagen), pintor y escultor español."),
+            Efemeride(1990, "en México se inaugura el primer museo de arte contemporáneo de la ciudad."),
+        )
+        val nice = Datos.niceEfemerides(all, max = 2)
+        assertEquals(listOf(1990, 2012), nice.map { it.year })
+        assertEquals("En Silicon Valley, la empresa Microsoft anuncia el lanzamiento del sistema operativo Windows 8.", nice[1].text)
+    }
+
+    @Test
     fun `sin lo de la imagen`() {
         assertEquals("Nace Évariste Galois, matemático.", Datos.cleanEfemeride("Nace Évariste Galois (en la imagen), matemático."))
     }

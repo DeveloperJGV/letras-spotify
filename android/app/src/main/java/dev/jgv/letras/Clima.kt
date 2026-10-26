@@ -56,16 +56,27 @@ class Clima(private val context: Context) {
     fun efemerides(today: Calendar): List<Efemeride> {
         val day = today.get(Calendar.DAY_OF_MONTH)
         val month = today.get(Calendar.MONTH) + 1
-        val cache = File(context.cacheDir, "efemerides-%02d-%02d.json".format(month, day))
+        val cache = File(context.cacheDir, "efemerides2-%02d-%02d.json".format(month, day))
         val json = if (cache.exists()) {
             cache.readText()
         } else {
             try {
-                val r = Http.get("https://es.wikipedia.org/api/rest_v1/feed/onthisday/selected/%02d/%02d".format(month, day))
-                if (!r.isSuccessful) return emptyList()
-                // Solo lo que se usa (el original trae páginas y fotos, unos 50 KB).
-                val slim = slim(r.body)
-                context.cacheDir.listFiles { f -> f.name.startsWith("efemerides-") }?.forEach { it.delete() }
+                // "selected" (las destacadas, ~50 KB) y "events" (todas, ~600 KB: una vez al día y se queda lo poco que
+                // pasa el filtro).
+                val all = listOf("selected", "events").flatMap { kind ->
+                    val r = Http.get("https://es.wikipedia.org/api/rest_v1/feed/onthisday/$kind/%02d/%02d".format(month, day))
+                    if (r.isSuccessful) parse(r.body, kind) else emptyList()
+                }
+                if (all.isEmpty()) return emptyList()
+                val slim = org.json.JSONArray().apply {
+                    Datos.niceEfemerides(all).forEach { e ->
+                        put(JSONObject().apply {
+                            e.year?.let { put("year", it) }
+                            put("text", e.text)
+                        })
+                    }
+                }.toString()
+                context.cacheDir.listFiles { f -> f.name.startsWith("efemerides") }?.forEach { it.delete() }
                 cache.writeText(slim)
                 slim
             } catch (e: IOException) {
@@ -87,19 +98,12 @@ class Clima(private val context: Context) {
         }
     }
 
-    private fun slim(body: String): String {
-        val selected = JSONObject(body).optJSONArray("selected") ?: org.json.JSONArray()
-        val out = org.json.JSONArray()
-        for (i in 0 until selected.length()) {
-            val e = selected.getJSONObject(i)
-            val text = Datos.cleanEfemeride(e.optString("text"))
-            if (text.isEmpty()) continue
-            out.put(JSONObject().apply {
-                if (e.has("year")) put("year", e.getInt("year"))
-                put("text", text)
-            })
+    private fun parse(body: String, kind: String): List<Efemeride> {
+        val list = JSONObject(body).optJSONArray(kind) ?: return emptyList()
+        return (0 until list.length()).map { i ->
+            val e = list.getJSONObject(i)
+            Efemeride(if (e.has("year")) e.getInt("year") else null, e.optString("text"))
         }
-        return out.toString()
     }
 
     /** Las cosas bonitas de Javier: Pictures/Letras/datos.txt (ver [Datos.parseNice]). Vacía si no existe. */
