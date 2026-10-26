@@ -203,10 +203,16 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         }
         if (changed({ it.battery }, { it.showingLyrics })) renderBattery(s)
         if (changed({ it.folder }, { it.waiting })) layoutIdleClock(s)
-        if (changed({ it.dato })) renderDato(s.dato)
+        if (changed({ it.dato })) {
+            renderDato(s.dato)
+            // La tarjeta cambió sola (no la primera vez): Hunter o Tango la presentan.
+            if (old?.dato != null) s.dato?.let { dogs.present(it.kind) }
+        }
         if (changed({ it.shownWeather })) weatherView.show(s.shownWeather)
-        // El cielo sigue el clima también detrás de la letra.
+        // El cielo y los perros siguen el clima también detrás de la letra.
         sky.weatherCode = s.weather?.code
+        dogs.weatherCode = s.weather?.code
+        dogs.tempC = s.weather?.tempC
         dogs.mood = s.dogMood
     }
 

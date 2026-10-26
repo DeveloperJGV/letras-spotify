@@ -73,6 +73,10 @@ class DogsView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         "dj" to Style(false, 8f, loopFrom = 4), "guitar" to Style(false, 8f, loopFrom = 4),
         "maracas" to Style(false, 10f, loopFrom = 2), "keyboard" to Style(false, 8f, loopFrom = 2),
         "drums" to Style(false, 10f, loopFrom = 4),
+        "present" to Style(false, 7f, loopFrom = 3), "newspaper" to Style(false, 5f, loopFrom = 2),
+        "telescope" to Style(false, 5f, loopFrom = 2), "umbrella" to Style(false, 5f, loopFrom = 1),
+        "sunglasses" to Style(false, 4f, loopFrom = 2), "scarf" to Style(false, 6f, loopFrom = 1),
+        "scared" to Style(false, 8f, loopFrom = 2), "puddle" to Style(false, 9f),
     )
 
     /** Al ritmo: cuántos pulsos dura una vuelta de la parte que se repite. */
@@ -101,6 +105,42 @@ class DogsView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         Activity("sleep_curl", 20f, 45f, 1),
     )
     private val nightSleeps = listOf("sleep", "sleep_curl", "sleep_side", "sleep_sploot")
+
+    /** Lo que hacen de día según el clima (se suma a [dayActivities]). */
+    private fun weatherActivities(): List<Activity> {
+        val code = weatherCode ?: return emptyList()
+        val t = tempC
+        val out = mutableListOf(Activity("newspaper", 6f, 10f, 1))
+        when (code) {
+            in 51..67, in 80..82 -> {
+                out += Activity("umbrella", 8f, 14f, 5)
+                out += Activity("puddle", 3f, 5f, 2)
+            }
+            in 95..99 -> out += Activity("scared", 5f, 9f, 6)
+            0, 1 -> if (t != null && t >= WARM_C) out += Activity("sunglasses", 10f, 20f, 4)
+        }
+        if (t != null && t <= COLD_C) out += Activity("scarf", 8f, 14f, 4)
+        return out
+    }
+
+    /** El clima de ahora (código WMO) y la temperatura: de día cambian lo que hacen (paraguas, lentes, bufanda…). */
+    var weatherCode: Int? = null
+    var tempC: Double? = null
+
+    /**
+     * Cambió la tarjeta de datos: uno de los dos (el que esté despierto y sin hacer nada importante) la "presenta".
+     * Un día como hoy: lee el periódico; el cielo de noche: el telescopio; lo demás, a veces la señala.
+     */
+    fun present(kind: Dato.Kind) {
+        if (mood != Mood.REST || hugLeft > 0f) return
+        val anim = when {
+            kind == Dato.Kind.ON_THIS_DAY -> "newspaper"
+            kind == Dato.Kind.SKY && night > 0.5f -> "telescope"
+            Random.nextFloat() < 0.5f -> "present"
+            else -> return
+        }
+        dogs.filter { it.awake && it.has(anim) }.randomOrNull()?.perform(anim, PRESENT_SEC)
+    }
 
     var mood = Mood.REST
         set(value) {
@@ -399,6 +439,17 @@ class DogsView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             }
         }
 
+        /** No está dormido ni caminando a algún lado (para no despertarlo ni cortarle el paso). */
+        val awake get() = !anim.startsWith("sleep") && anim != "dream" && !moving && !hugging && partyLeft <= 0f
+
+        /** Hace [a] un rato, ya (presentar la tarjeta). */
+        fun perform(a: String, seconds: Float) {
+            play(a)
+            activityLeft = seconds
+            // Cuenta como despierto: no se duerme a la mitad.
+            restTime = 0f
+        }
+
         fun hugAt(spot: Float, faceRight: Boolean) {
             hugging = true
             hugFaceRight = faceRight
@@ -474,12 +525,22 @@ class DogsView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                 Mood.RUN -> runAcross(w, fresh = false)
                 Mood.STROLL -> start(pick(musicActivities), w)
                 Mood.REST -> when {
-                    night <= 0.5f -> start(pick(dayActivities), w)
+                    night <= 0.5f -> start(pick(dayActivities + weatherActivities()), w)
                     restTime < SLEEP_AFTER_SEC -> {
-                        // Con luna llena, antes de dormirse le aúllan.
+                        // Con luna llena, antes de dormirse le aúllan; con tormenta, se asustan; despejado, a veces
+                        // ven las estrellas con el telescopio.
                         val r = Random.nextFloat()
-                        play(if (fullMoon && r < 0.4f) "howl" else if (r < 0.65f) "yawn" else "idle")
-                        activityLeft = 4f
+                        val code = weatherCode
+                        play(
+                            when {
+                                code != null && code >= 95 && r < 0.6f -> "scared"
+                                fullMoon && r < 0.4f -> "howl"
+                                code != null && code <= 2 && r < 0.3f -> "telescope"
+                                r < 0.65f -> "yawn"
+                                else -> "idle"
+                            }
+                        )
+                        activityLeft = if (anim == "telescope" || anim == "scared") 8f else 4f
                     }
                     // Dormido: cambia de posición de vez en cuando y a veces sueña.
                     anim.startsWith("sleep") && Random.nextFloat() < 0.35f -> {
@@ -550,6 +611,10 @@ class DogsView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         const val DOG_DP = 90f
         const val TAP_GAP_MS = 600L
         const val HUG_SEC = 7f
+        const val PRESENT_SEC = 6f
+        /** Desde esta temperatura, en día despejado, lentes de sol; hasta esta, bufanda. */
+        const val WARM_C = 22.0
+        const val COLD_C = 12.0
         val MUSICAL = setOf("headbob", "party", "howl", "wiggle", "listen_lie", "dj", "guitar", "maracas", "keyboard", "drums")
     }
 }

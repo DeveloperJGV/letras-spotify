@@ -30,12 +30,20 @@
   "guitar",
   "maracas",
   "keyboard",
-  "drums"
+  "drums",
+  "present",
+  "newspaper",
+  "telescope",
+  "umbrella",
+  "sunglasses",
+  "scarf",
+  "scared",
+  "puddle"
  ],
  "hunter": {
   "celda": [
    41,
-   33
+   34
   ],
   "cuadros": [
    4,
@@ -68,13 +76,21 @@
    9,
    9,
    0,
-   0
+   0,
+   9,
+   9,
+   9,
+   9,
+   9,
+   9,
+   9,
+   9
   ]
  },
  "tango": {
   "celda": [
    44,
-   30
+   38
   ],
   "cuadros": [
    4,
@@ -105,6 +121,14 @@
    9,
    0,
    9,
+   9,
+   9,
+   9,
+   9,
+   9,
+   9,
+   9,
+   0,
    9,
    9,
    9

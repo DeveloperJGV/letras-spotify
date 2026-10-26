@@ -38,6 +38,8 @@ FILAS = [
     'howl', 'listen_lie', 'wiggle',
     # tocando (no todas las tiene cada perro: PixelLab no siempre dibuja el instrumento)
     'dj', 'guitar', 'maracas', 'keyboard', 'drums',
+    # pantalla de datos y clima
+    'present', 'newspaper', 'telescope', 'umbrella', 'sunglasses', 'scarf', 'scared', 'puddle',
 ]
 INDICE = os.path.join(AQUI, '..', 'android', 'app', 'src', 'main', 'res', 'raw', 'perros.json')
 CUADROS = {
