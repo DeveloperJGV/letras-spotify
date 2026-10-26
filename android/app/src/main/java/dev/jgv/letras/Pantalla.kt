@@ -175,7 +175,10 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         lyricsScroll.setOnTouchListener { _, _ -> lastTouchAt = SystemClock.elapsedRealtime(); false }
         // La letra vive entre el encabezado y la parte de abajo (controles y perros): nada se encima.
         val relayout = View.OnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
-            if (bottom - top != oldBottom - oldTop) layoutLyricsArea()
+            if (bottom - top != oldBottom - oldTop) {
+                layoutLyricsArea()
+                layoutIdleClock(state)
+            }
         }
         header.addOnLayoutChangeListener(relayout)
         // El título y "En pausa" / "MODO TRANQUILO" terminan antes de los botones de arriba (3, o 4 en el protector).
@@ -328,15 +331,16 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
      * Solo debug: simula "De Música Ligera" sonando desde el segundo indicado, sin Spotify ni Javbots.
      * adb shell am start -n dev.jgv.letras/.MainActivity --ei demo 40 [--ef hora 19.5] [--ef luna 0.5]
      */
-    fun startDemo(seconds: Int, tempo: Float = 128f) {
+    fun startDemo(seconds: Int, tempo: Float = 128f, paused: Boolean = false) {
         stopLoops()
         val now = SystemClock.elapsedRealtime()
         val demo = NowPlaying(
             id = "demo", title = "De Música Ligera", artists = listOf("Soda Stereo"), album = "Canción Animal",
-            durationMs = 212_000, progressMs = seconds * 1000L, isPlaying = true, coverUrl = null, sampledAt = now,
+            durationMs = 212_000, progressMs = seconds * 1000L, isPlaying = !paused, coverUrl = null, sampledAt = now,
             tempo = tempo,
         )
-        dispatch(Action.Polled(PollResult.Playing(demo), now))
+        // En pausa se simula Javbots (con botones): a los 20 s pasa al reloj con los controles abajo.
+        dispatch(Action.Polled(PollResult.Playing(demo, Lyrics.NotFound.takeIf { paused }, sourceHandlesLyrics = paused), now))
         startTicker()
     }
 
@@ -618,7 +622,10 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         if (controls.visibility != shown) {
             controls.visibility = shown
             // Ocultos no vuelven a acomodarse solos: la letra recupera su espacio aquí.
-            controls.post { layoutLyricsArea() }
+            controls.post {
+                layoutLyricsArea()
+                layoutIdleClock(state)
+            }
         }
         playPause.setImageResource(if (s.track?.isPlaying == true) R.drawable.ic_pause else R.drawable.ic_play)
         val v = s.track?.volume
@@ -737,12 +744,21 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private fun layoutIdleClock(s: ScreenState) {
         val small = s.folder != null && s.waiting !is Waiting.Login
         idle.gravity = if (small) Gravity.BOTTOM or Gravity.START else Gravity.CENTER
-        clock.sizeSp = if (small) 56f else 96f
+        // Horizontal con los controles de la música abajo: el reloj un poco más chico para que quepa la tarjeta.
+        // (Con el cielo: el reloj puede estar oculto todavía y medir 0.)
+        val tight = !small && controls.visibility == View.VISIBLE && sky.width > sky.height
+        clock.sizeSp = if (small) 56f else if (tight) 72f else 96f
         clock.alignStart = small
         (dato.layoutParams as android.widget.FrameLayout.LayoutParams).gravity =
             Gravity.TOP or (if (small) Gravity.START else Gravity.CENTER_HORIZONTAL)
         dato.requestLayout()
-        idle.setPadding(dp(32), dp(32), dp(32), if (small) bottomAreaHeight() + dp(36) else dp(32))
+        // En pausa siguen los controles de la música abajo: el reloj, la tarjeta y el clima se acomodan arriba de ellos.
+        val bottom = when {
+            small -> bottomAreaHeight() + dp(36)
+            controls.visibility == View.VISIBLE -> bottomAreaHeight() + dp(8)
+            else -> dp(32)
+        }
+        idle.setPadding(dp(32), dp(32), dp(32), bottom)
         layoutSides()
     }
 
