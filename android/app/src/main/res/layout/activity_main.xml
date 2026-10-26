@@ -139,13 +139,51 @@
             android:textColor="@color/text_primary"
             android:textSize="18sp" />
 
-        <!-- Batería de la tablet: pila que se llena, burbujas y rayo al cargar (BatteryView.kt). -->
-        <dev.jgv.letras.BatteryView
-            android:id="@+id/battery"
+        <!-- Tarjeta de datos que va rotando: clima, cielo, un día como hoy, datos geek, cosas bonitas (Datos.kt). -->
+        <!-- Alto fijo (hasta tres renglones): al cambiar de tarjeta, el reloj no brinca. -->
+        <FrameLayout
+            android:id="@+id/datoBox"
+            android:layout_width="wrap_content"
+            android:layout_height="112dp"
+            android:layout_marginTop="16dp"
+            android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/dato"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:visibility="gone" />
+            android:layout_gravity="top|center_horizontal"
+            android:background="@drawable/dato_background"
+            android:orientation="vertical"
+            android:paddingStart="18dp"
+            android:paddingTop="10dp"
+            android:paddingEnd="18dp"
+            android:paddingBottom="12dp">
+
+            <TextView
+                android:id="@+id/datoTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-medium"
+                android:letterSpacing="0.2"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/datoText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:fontFamily="sans-serif-light"
+                android:lineSpacingExtra="2dp"
+                android:maxWidth="440dp"
+                android:shadowColor="#99000000"
+                android:shadowDy="1"
+                android:shadowRadius="4"
+                android:textColor="@color/text_primary"
+                android:textSize="17sp" />
+        </LinearLayout>
+        </FrameLayout>
+
 
         <Button
             android:id="@+id/connect"
@@ -172,6 +210,21 @@
             android:textSize="14sp"
             android:visibility="gone" />
     </LinearLayout>
+
+    <!-- A los lados del reloj: el clima a la izquierda y la pila a la derecha. Con imágenes de fondo suben a las
+         esquinas de arriba (Pantalla.layoutSides). -->
+    <dev.jgv.letras.WeatherView
+        android:id="@+id/weather"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone" />
+
+    <!-- Batería de la tablet: pila que se llena, burbujas y rayo al cargar (BatteryView.kt). -->
+    <dev.jgv.letras.BatteryView
+        android:id="@+id/battery"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone" />
 
     <!-- Firma de la marca: discreta, arriba a la izquierda, solo en la pantalla de espera. -->
     <TextView

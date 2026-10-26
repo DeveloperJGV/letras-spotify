@@ -58,6 +58,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     val auth = SpotifyAuth(context)
     private val player = SpotifyPlayer(auth)
     private val javbots = JavbotsSource(context)
+    private val clima = Clima(context)
 
     private val sky: SkyView = root.findViewById(R.id.sky)
     private val art: ArtView = root.findViewById(R.id.art)
@@ -78,6 +79,11 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private val clock: ClockView = root.findViewById(R.id.clock)
     private val message: TextView = root.findViewById(R.id.message)
     private val battery: BatteryView = root.findViewById(R.id.battery)
+    private val weatherView: WeatherView = root.findViewById(R.id.weather)
+    private val datoBox: View = root.findViewById(R.id.datoBox)
+    private val dato: View = root.findViewById(R.id.dato)
+    private val datoTitle: TextView = root.findViewById(R.id.datoTitle)
+    private val datoText: TextView = root.findViewById(R.id.datoText)
     private val connect: Button = root.findViewById(R.id.connect)
     private val connectHint: View = root.findViewById(R.id.connectHint)
     private val controls: View = root.findViewById(R.id.controls)
@@ -91,6 +97,13 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private var lyricsJob: Job? = null
     private var coverJob: Job? = null
     private var imageJob: Job? = null
+    private var datosJob: Job? = null
+
+    // Lo que ya llegó para las tarjetas de datos (se vuelven a armar cada minuto).
+    private var weather: Weather? = null
+    private var weatherAt = 0L
+    private var efemerides: List<Efemeride> = emptyList()
+    private var efemeridesDay = -1
 
     // Lo que es solo de las vistas (no del estado): qué imagen toca, si ya hay una puesta y el dedo en la letra.
     private var imageIndex = -1
@@ -129,6 +142,20 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         root.findViewById<View>(R.id.btnNext).setOnClickListener { dispatch(Action.Control("next")) }
         root.findViewById<View>(R.id.btnVolumeDown).setOnClickListener { dispatch(Action.Control("volumeDown")) }
         root.findViewById<View>(R.id.btnVolumeUp).setOnClickListener { dispatch(Action.Control("volumeUp")) }
+
+        // El clima y la pila se acomodan a la altura del reloj cada que este se mueve.
+        clock.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> layoutSides() }
+        // Al girar la tablet: ya con las medidas nuevas de todo (en el mismo paso aún traen las de antes).
+        idle.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or_, ob ->
+            if (r - l != or_ - ol || b - t != ob - ot) idle.post { layoutSides() }
+        }
+        // También cuando cambian de tamaño ellos (llega el clima, cambia "CARGANDO") o la tarjeta aparece.
+        val sides = View.OnLayoutChangeListener { _, l, t, r, b, ol, ot, or_, ob ->
+            if (r - l != or_ - ol || b - t != ob - ot) layoutSides()
+        }
+        weatherView.addOnLayoutChangeListener(sides)
+        battery.addOnLayoutChangeListener(sides)
+        datoBox.addOnLayoutChangeListener { _, _, t, _, _, _, ot, _, _ -> if (t != ot) layoutSides() }
 
         // Si la persona desliza la letra a mano, el auto-scroll espera unos segundos.
         lyricsScroll.setOnTouchListener { _, _ -> lastTouchAt = SystemClock.elapsedRealtime(); false }
@@ -174,6 +201,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         }
         if (changed({ it.battery }, { it.showingLyrics })) renderBattery(s)
         if (changed({ it.folder }, { it.waiting })) layoutIdleClock(s)
+        if (changed({ it.dato })) renderDato(s.dato)
+        if (changed({ it.shownWeather })) weatherView.show(s.shownWeather)
         dogs.mood = s.dogMood
     }
 
@@ -197,10 +226,12 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         // La batería llega al registrarse (es un aviso "pegajoso") y luego cada que cambia.
         context.registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))?.let(::onBattery)
         refresh()
+        if (datosJob?.isActive != true) datosJob = scope.launch { datosLoop() }
     }
 
     fun stop() {
         stopLoops()
+        datosJob?.cancel()
         try {
             context.unregisterReceiver(batteryReceiver)
         } catch (_: IllegalArgumentException) {
@@ -217,14 +248,14 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         gestures.onTouchEvent(ev)
     }
 
-    /** Solo debug: hora del cielo, fase de la luna y fondo ("" = cielo, o el nombre de una carpeta) fijos. */
+    /** Solo debug: hora del cielo, fase de la luna y fondo ("cielo", o el nombre de una carpeta) fijos. */
     fun debugOverrides(hour: Float?, moonPhase: Float?, background: String?) {
         if (hour != null) sky.forcedHour = hour
         if (moonPhase != null) {
             sky.forcedMoonPhase = moonPhase
             dogs.fullMoon = SkyView.illumination(moonPhase) > FULL_MOON
         }
-        if (background != null) dispatch(Action.BackgroundChosen(background.ifEmpty { null }, SystemClock.elapsedRealtime()))
+        if (background != null) dispatch(Action.BackgroundChosen(background.takeUnless { it.isEmpty() || it == "cielo" }, SystemClock.elapsedRealtime()))
     }
 
     private fun onBattery(intent: Intent) {
@@ -333,6 +364,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         dogs.night = darkness
         clock.night = darkness
         battery.night = darkness
+        weatherView.night = darkness
         if (sky.forcedMoonPhase == null) {
             dogs.fullMoon = SkyView.illumination(SkyView.moonPhase(System.currentTimeMillis())) > FULL_MOON
         }
@@ -345,6 +377,32 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             val range = lyricsContainer.height - lyricsScroll.height
             val target = (range * t.positionAt(now) / t.durationMs).toInt()
             if (kotlin.math.abs(target - lyricsScroll.scrollY) > dp(4)) lyricsScroll.smoothScrollTo(0, target)
+        }
+    }
+
+    /**
+     * Cada minuto vuelve a armar las tarjetas de datos (cambia la luna, el día). El clima se baja cada media hora y
+     * las efemérides una vez al día; sin red se queda lo último que llegó.
+     */
+    private suspend fun datosLoop() {
+        while (scope.isActive) {
+            val now = SystemClock.elapsedRealtime()
+            val today = java.util.Calendar.getInstance()
+            val dayKey = today.get(java.util.Calendar.DAY_OF_YEAR)
+            val nice = withContext(Dispatchers.IO) {
+                if (weather == null || now - weatherAt > WEATHER_EVERY_MS) {
+                    clima.weather()?.let { weather = it; weatherAt = now }
+                }
+                if (efemeridesDay != dayKey) {
+                    clima.efemerides(today).takeIf { it.isNotEmpty() }?.let { efemerides = it; efemeridesDay = dayKey }
+                }
+                clima.nice()
+            }
+            // Clima de ayer no: si no se pudo actualizar en horas, mejor no enseñarlo.
+            if (now - weatherAt > WEATHER_STALE_MS) weather = null
+            val phase = sky.forcedMoonPhase ?: SkyView.moonPhase(System.currentTimeMillis())
+            dispatch(Action.DatosChanged(Datos.cards(today, weather, phase, efemerides, nice), weather, now))
+            delay(if (weather == null && clima.hasLocation) DATOS_RETRY_MS else DATOS_EVERY_MS)
         }
     }
 
@@ -464,6 +522,32 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         connectHint.visibility = connect.visibility
     }
 
+    /** La tarjeta de datos: se desvanece, cambia y vuelve. El título va del color de su tipo. */
+    private fun renderDato(d: Dato?) {
+        dato.animate().cancel()
+        if (d == null) {
+            datoBox.visibility = View.GONE
+            return
+        }
+        val show = {
+            datoTitle.text = d.title
+            datoTitle.setTextColor(DATO_COLORS.getValue(d.kind))
+            datoText.text = d.text
+            datoBox.visibility = View.VISIBLE
+            dato.animate().alpha(1f).translationY(0f).setDuration(500).start()
+        }
+        if (datoBox.visibility != View.VISIBLE) {
+            dato.alpha = 0f
+            dato.translationY = dp(6).toFloat()
+            show()
+        } else {
+            dato.animate().alpha(0f).translationY(-dp(6).toFloat()).setDuration(350).withEndAction {
+                dato.translationY = dp(6).toFloat()
+                show()
+            }.start()
+        }
+    }
+
     private fun renderHeader(s: ScreenState) {
         val t = s.track ?: return
         title.text = t.title
@@ -498,7 +582,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private fun renderBattery(s: ScreenState) {
         renderTrackState(s)
         val b = s.battery
-        battery.visibility = if (b == null) View.GONE else View.VISIBLE
+        battery.visibility = if (b == null || s.showingLyrics) View.GONE else View.VISIBLE
         if (b == null) return
         val label = when {
             b.charging && b.percent >= 100 -> R.string.battery_label_full
@@ -607,7 +691,53 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         idle.gravity = if (small) Gravity.BOTTOM or Gravity.START else Gravity.CENTER
         clock.sizeSp = if (small) 56f else 96f
         clock.alignStart = small
+        (dato.layoutParams as android.widget.FrameLayout.LayoutParams).gravity =
+            Gravity.TOP or (if (small) Gravity.START else Gravity.CENTER_HORIZONTAL)
+        dato.requestLayout()
         idle.setPadding(dp(32), dp(32), dp(32), if (small) bottomAreaHeight() + dp(36) else dp(32))
+        layoutSides()
+    }
+
+    /**
+     * Sobre el cielo, el clima a la izquierda y la pila a la derecha, a media altura del reloj. Sobre imágenes, los
+     * dos arriba a la derecha, bajo los botones (abajo a la izquierda va el reloj chico con la tarjeta). En vertical
+     * no caben a los lados: van juntos y centrados abajo de la tarjeta.
+     *
+     * Se mueven con translation (no con márgenes): un margen viejo, al girar, los deja fuera y Android los mide con
+     * alto 0.
+     */
+    private fun layoutSides() {
+        val small = state.folder != null
+        val w = weatherView
+        val b = battery
+        val wShown = w.visibility == View.VISIBLE
+        when {
+            small -> {
+                val right = idle.width - dp(12)
+                put(w, right - w.width, dp(56))
+                put(b, right - b.width, dp(56) + if (wShown) w.height else 0)
+            }
+            idle.height > idle.width -> {
+                val above = if (datoBox.visibility == View.VISIBLE) datoBox else message
+                val top = idle.top + above.top + above.height + dp(24)
+                val gap = if (wShown) dp(24) else 0
+                val total = (if (wShown) w.width else 0) + gap + b.width
+                val left = (idle.width - total) / 2
+                val rowH = maxOf(if (wShown) w.height else 0, b.height)
+                put(w, left, top + (rowH - w.height) / 2)
+                put(b, left + (if (wShown) w.width else 0) + gap, top + (rowH - b.height) / 2)
+            }
+            else -> {
+                val mid = idle.top + clock.top + clock.height / 2
+                put(w, dp(40), mid - w.height / 2)
+                put(b, idle.width - dp(40) - b.width, mid - b.height / 2)
+            }
+        }
+    }
+
+    private fun put(v: View, x: Int, y: Int) {
+        v.translationX = x.coerceAtLeast(0).toFloat()
+        v.translationY = y.coerceAtLeast(0).toFloat()
     }
 
     private fun recentlyTouched(now: Long) = now - lastTouchAt < TOUCH_PAUSE_MS
@@ -768,6 +898,19 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         const val FULL_MOON = 0.97f
 
         const val TICK_MS = 150L
+        const val DATOS_EVERY_MS = 60_000L
+        /** Sin clima todavía (sin red): reintentar más seguido. */
+        const val DATOS_RETRY_MS = 20_000L
+        const val WEATHER_EVERY_MS = 30 * 60_000L
+        const val WEATHER_STALE_MS = 3 * 60 * 60_000L
+        /** Color del título de cada tarjeta. */
+        val DATO_COLORS = mapOf(
+            Dato.Kind.WEATHER to 0xFF9FD3FF.toInt(),
+            Dato.Kind.SKY to 0xFFC9B8FF.toInt(),
+            Dato.Kind.ON_THIS_DAY to 0xFFFFD49A.toInt(),
+            Dato.Kind.GEEK to 0xFF9EF0B5.toInt(),
+            Dato.Kind.NICE to 0xFFFFB3C7.toInt(),
+        )
         const val JAVBOTS_POLL_MS = 1_500L
         const val SPOTIFY_POLL_MS = 4_000L
         const val PAUSED_POLL_MS = 3_000L

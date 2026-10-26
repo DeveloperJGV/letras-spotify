@@ -61,6 +61,12 @@ data class ScreenState(
     val fitImage: Boolean = true,
     val scrimLevel: Int = 1,
     val battery: Battery? = null,
+    /** La tarjetita bajo el reloj: lo que se rota (clima, cielo, efemérides…) y cuál se ve desde cuándo. */
+    val datos: List<Dato> = emptyList(),
+    val datoIndex: Int = 0,
+    val datoSince: Long = 0,
+    /** El clima de hoy (null = todavía no llega, o sin red hace horas). */
+    val weather: Weather? = null,
 ) {
     val showingLyrics get() = waiting == null
 
@@ -76,6 +82,13 @@ data class ScreenState(
     /** Los botones de la música se ven con canción y fuente que los acepte, también en pausa (para darle play). */
     val showControls get() = track != null && canControl
 
+    /** Los datos (tarjeta y clima) van con el reloj, salvo cuando hay que configurar o iniciar sesión (estorban). */
+    private val showsDatos get() = !showingLyrics && waiting != Waiting.MissingConfig && waiting !is Waiting.Login
+
+    val dato: Dato? get() = datos.getOrNull(datoIndex)?.takeIf { showsDatos }
+
+    val shownWeather: Weather? get() = weather?.takeIf { showsDatos }
+
     companion object {
         /** En pausa más de esto: pasa al reloj. */
         const val PAUSE_TO_IDLE_MS = 20_000L
@@ -85,6 +98,8 @@ data class ScreenState(
         const val LEAD_MS = 250L
         val IMAGE_EVERY_OPTIONS = listOf(0, 5, 15, 60)
         const val SCRIM_LEVELS = 3
+        /** Cuánto se ve cada tarjeta de datos. */
+        const val DATO_MS = 25_000L
     }
 }
 
@@ -96,6 +111,8 @@ sealed interface Action {
     /** Pasa el tiempo (unas 7 veces por segundo). */
     data class Tick(val now: Long) : Action
     data class BatteryChanged(val battery: Battery) : Action
+    /** Se armaron otra vez las tarjetas (llegó el clima, cambió el día…). */
+    data class DatosChanged(val datos: List<Dato>, val weather: Weather?, val now: Long) : Action
     /** Antes de consultar: falta configuración o iniciar sesión. */
     data class NeedsSetup(val waiting: Waiting) : Action
     data class BackgroundChosen(val folder: String?, val now: Long) : Action
@@ -131,6 +148,7 @@ fun reduce(s: ScreenState, action: Action): Result = when (action) {
     is Action.LyricsLoaded -> lyricsLoaded(s, action)
     is Action.Tick -> tick(s, action.now)
     is Action.BatteryChanged -> Result(s.copy(battery = action.battery))
+    is Action.DatosChanged -> datosChanged(s, action)
     is Action.NeedsSetup -> Result(s.copy(waiting = action.waiting, track = null, canControl = false))
     is Action.BackgroundChosen -> Result(
         s.copy(folder = action.folder, lastImageAt = action.now),
@@ -211,8 +229,21 @@ private fun lyricsLoaded(s: ScreenState, a: Action.LyricsLoaded): Result {
     }
 }
 
+/** Si la que se ve sigue en la lista nueva, se queda (no salta a la primera solo porque se actualizó el clima). */
+private fun datosChanged(s: ScreenState, a: Action.DatosChanged): Result {
+    if (a.datos == s.datos) return Result(s.copy(weather = a.weather))
+    val current = s.datos.getOrNull(s.datoIndex)
+    val sameKind = current?.let { c -> a.datos.indexOfFirst { it.kind == c.kind && it.title == c.title } } ?: -1
+    return if (sameKind >= 0) Result(s.copy(datos = a.datos, weather = a.weather, datoIndex = sameKind))
+    else Result(s.copy(datos = a.datos, weather = a.weather, datoIndex = 0, datoSince = a.now))
+}
+
 private fun tick(s: ScreenState, now: Long): Result {
     var next = s
+    // Con el reloj, la tarjeta de datos pasa a la siguiente cada tanto.
+    if (!s.showingLyrics && s.datos.size > 1 && now - s.datoSince > ScreenState.DATO_MS) {
+        next = next.copy(datoIndex = (s.datoIndex + 1) % s.datos.size, datoSince = now)
+    }
     val effects = mutableListOf<Effect>()
     // Con música: con cada canción o cada N minutos. Sin música: cada pocos minutos, como marco de fotos.
     val every = if (s.showingLyrics) s.imageEveryMin * 60_000L else ScreenState.IDLE_IMAGE_MS

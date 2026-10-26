@@ -3,6 +3,14 @@ package dev.jgv.letras
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.security.KeyStore
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocketFactory
+import javax.net.ssl.TrustManagerFactory
+import javax.net.ssl.X509TrustManager
 
 /** HTTP mínimo con HttpURLConnection: la app no carga librerías de red para no pesar en 1 GB de RAM. */
 object Http {
@@ -72,5 +80,29 @@ object Http {
             connectTimeout = 8_000
             readTimeout = 10_000
             setRequestProperty("User-Agent", USER_AGENT)
+            if (this is HttpsURLConnection) sslSocketFactory = sockets
         }
+
+    /**
+     * Las raíces del sistema más las de Let's Encrypt (ISRG Root X1 y X2, en resources/certs). Android 5.1 no las
+     * trae y Open-Meteo y Wikipedia usan Let's Encrypt: sin esto, "Trust anchor for certification path not found".
+     * La validación es la normal; solo se suman dos raíces públicas.
+     */
+    private val sockets: SSLSocketFactory by lazy {
+        val store = KeyStore.getInstance(KeyStore.getDefaultType()).apply { load(null, null) }
+        val system = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply {
+            init(null as KeyStore?)
+        }
+        system.trustManagers.filterIsInstance<X509TrustManager>().forEach { tm ->
+            tm.acceptedIssuers.forEachIndexed { i, cert -> store.setCertificateEntry("system-$i", cert) }
+        }
+        val factory = CertificateFactory.getInstance("X.509")
+        listOf("isrg_root_x1.pem", "isrg_root_x2.pem").forEach { name ->
+            Http::class.java.getResourceAsStream("/certs/$name")?.use { input ->
+                store.setCertificateEntry(name, factory.generateCertificate(input) as X509Certificate)
+            }
+        }
+        val trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply { init(store) }
+        SSLContext.getInstance("TLS").apply { init(null, trust.trustManagers, null) }.socketFactory
+    }
 }

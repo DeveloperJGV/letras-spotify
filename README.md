@@ -43,8 +43,13 @@ son de sus autores.
   arriba de los perros.
 - **En pausa** más de 20 s pasa al reloj con el botón de play a la mano.
 - **Reloj** con brillo según el cielo (azul de noche, durazno de día), los dos puntos latiendo y la fecha abajo.
-- **Batería** bajo el reloj: una pila que se llena con su color (verde, ámbar, rojo), con burbujas y un rayo que
+- **Batería** junto al reloj: una pila que se llena con su color (verde, ámbar, rojo), con burbujas y un rayo que
   late mientras carga. Con la letra, si queda poca, sale junto al título.
+- **Clima** del otro lado del reloj ([Open-Meteo](https://open-meteo.com), sin clave): temperatura, cielo,
+  máxima/mínima y probabilidad de lluvia, con un dibujito que se mueve. Se pide cada media hora.
+- **Tarjeta de datos** bajo el reloj, cambia cada 25 s: el cielo de hoy (fase de la luna, días para la llena,
+  salida y puesta del sol), "un día como hoy" (Wikipedia en español), un dato geek y tus propias frases.
+  En vertical, el clima y la pila van juntos abajo de la tarjeta.
 - **Sin la PC** (apagada o dormida) dice "Nada sonando" y la busca por detrás, sin anunciarlo.
 - **Protector de pantalla:** con la tablet cargando, en vez de apagarse muestra esta misma pantalla
   (Ajustes → Pantalla → Protector de pantalla → Letras). Botón ✕ para salir.
@@ -93,6 +98,16 @@ Pictures/Letras/fondos/
 
 Por cable con adb: `adb push "Artista - Título.gif" "/sdcard/Pictures/Letras/fondos/Lofi/"`
 
+### Tus frases
+
+`Pictures/Letras/datos.txt`, una por renglón. Con fecha (`día/mes`) solo sale ese día; sin fecha, cualquiera:
+
+```
+25/10 Hoy cumple Tango
+Te quiero
+# los renglones con # no salen
+```
+
 ## Opciones (mantener presionado en la pantalla)
 
 | Opción                         | Valores                                                   |
@@ -117,6 +132,9 @@ javbots.token=<token de ~/.pixel-agents/music.json>
 javbots.host=
 javbots.port=3101
 spotify.clientId=
+# clima: un punto aproximado (sin él no sale el clima)
+clima.lat=
+clima.lon=
 ```
 
 En la PC, Javbots necesita `"screenPort": 3101` en `~/.pixel-agents/music.json` (ver el README de música de Javbots).
@@ -128,6 +146,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Sin AndroidX ni librerías de red a propósito: la tablet es API 22 y tiene 1 GB. El APK pesa ~1.5 MB.
+Android 5.1 no trae la raíz de Let's Encrypt (la usan Open-Meteo y Wikipedia): la app suma ISRG Root X1 y X2
+(`app/src/main/resources/certs`) a las del sistema.
 
 ## Cómo está hecho el código
 
@@ -148,7 +168,8 @@ acciones ──► reduce(estado, acción) ──► estado nuevo + efectos
 | `Pantalla.kt` | Vistas: manda acciones, dibuja el estado y hace los efectos. La usan la app y el protector. |
 | `MainActivity.kt` / `Protector.kt` | La app (inicio de sesión, menús) y el protector de pantalla. |
 | `JavbotsSource.kt`, `SpotifyPlayer.kt`, `Lyrics.kt` | De dónde sale la música y la letra. |
-| `SkyView`, `DogsView`, `ArtView`, `ClockView`, `BatteryView` | Vistas que se dibujan solas (cielo y luna, Hunter y Tango, imágenes, reloj, batería). |
+| `Datos.kt`, `Clima.kt` | Las tarjetas de datos (Kotlin puro, con pruebas) y de dónde salen (clima, Wikipedia, tus frases). |
+| `SkyView`, `DogsView`, `ArtView`, `ClockView`, `BatteryView`, `WeatherView` | Vistas que se dibujan solas (cielo y luna, Hunter y Tango, imágenes, reloj, batería, clima). |
 
 Pruebas (en la PC, sin tablet):
 
@@ -163,5 +184,6 @@ cd android
   [PixelLab](https://pixellab.ai). Los cuadros originales están en `arte/pixellab/` y `arte/armar_perros.py` arma
   las hojas de la app (Hunter se recolorea a gris atigrado).
 - Letras: Spotify (vía Javbots) y [LRCLIB](https://lrclib.net).
+- Clima: [Open-Meteo](https://open-meteo.com) (CC BY 4.0). Efemérides: [Wikipedia en español](https://es.wikipedia.org) (CC BY-SA).
 - Fondos de artistas: de sus autores, con el crédito que se muestra en pantalla. No se incluyen en este repo.
 - Íconos de los botones: [Material Icons](https://fonts.google.com/icons) (Apache 2.0).

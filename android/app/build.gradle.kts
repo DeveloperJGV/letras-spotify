@@ -13,6 +13,9 @@ val spotifyClientId = localProps.getProperty("spotify.clientId", "")
 val javbotsToken = localProps.getProperty("javbots.token", "")
 val javbotsHost = localProps.getProperty("javbots.host", "")
 val javbotsPort = localProps.getProperty("javbots.port", "3101")
+// Clima de la pantalla sin música: un punto aproximado de la casa (clima.lat / clima.lon). Sin él, no hay clima.
+val climaLat = localProps.getProperty("clima.lat", "")
+val climaLon = localProps.getProperty("clima.lon", "")
 
 android {
     namespace = "dev.jgv.letras"
@@ -28,6 +31,8 @@ android {
         buildConfigField("String", "JAVBOTS_TOKEN", "\"$javbotsToken\"")
         buildConfigField("String", "JAVBOTS_HOST", "\"$javbotsHost\"")
         buildConfigField("int", "JAVBOTS_PORT", javbotsPort)
+        buildConfigField("String", "CLIMA_LAT", "\"$climaLat\"")
+        buildConfigField("String", "CLIMA_LON", "\"$climaLon\"")
     }
 
     buildFeatures {

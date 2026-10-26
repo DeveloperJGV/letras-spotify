@@ -188,4 +188,38 @@ class ScreenStateTest {
         assertTrue(Battery(15, charging = false).low)
         assertFalse(Battery(16, charging = false).low)
     }
+
+    private val tres = listOf(
+        Dato(Dato.Kind.SKY, "EL CIELO DE HOY", "Luna"),
+        Dato(Dato.Kind.ON_THIS_DAY, "UN DÍA COMO HOY", "Picasso"),
+        Dato(Dato.Kind.GEEK, "DATO GEEK", "Pi"),
+    )
+
+    @Test
+    fun `con el reloj las tarjetas de datos rotan cada tanto`() {
+        val s = reduce(ScreenState(), Action.DatosChanged(tres, null, now = 0)).state
+        assertEquals("EL CIELO DE HOY", s.dato?.title)
+        assertEquals(0, reduce(s, Action.Tick(ScreenState.DATO_MS - 1)).state.datoIndex)
+        val next = reduce(s, Action.Tick(ScreenState.DATO_MS + 1)).state
+        assertEquals("UN DÍA COMO HOY", next.dato?.title)
+        val wrap = run(next, Action.Tick(2 * ScreenState.DATO_MS + 2), Action.Tick(3 * ScreenState.DATO_MS + 3)).state
+        assertEquals("EL CIELO DE HOY", wrap.dato?.title)
+    }
+
+    @Test
+    fun `con letra o al iniciar sesion no se ve la tarjeta`() {
+        val weather = Weather(13.0, 3, 21.0, 12.0, 92, null, null)
+        val s = reduce(ScreenState(), Action.DatosChanged(tres, weather, now = 0)).state
+        assertEquals(weather, s.shownWeather)
+        assertNull(reduce(s, javbots(song(), synced)).state.dato)
+        assertNull(reduce(s, javbots(song(), synced)).state.shownWeather)
+        assertNull(reduce(s, Action.NeedsSetup(Waiting.Login())).state.dato)
+    }
+
+    @Test
+    fun `al cambiar la lista se queda la tarjeta que se veia`() {
+        val s = run(ScreenState(), Action.DatosChanged(tres, null, now = 0), Action.Tick(ScreenState.DATO_MS + 1)).state
+        val updated = listOf(Dato(Dato.Kind.SKY, "EL CIELO DE HOY", "Luna y sol")) + tres.drop(1)
+        assertEquals("UN DÍA COMO HOY", reduce(s, Action.DatosChanged(updated, null, now = 30_000)).state.dato?.title)
+    }
 }
