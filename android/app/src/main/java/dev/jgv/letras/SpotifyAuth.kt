@@ -25,6 +25,12 @@ class SpotifyAuth(context: Context) {
     val hasClientId get() = CLIENT_ID.isNotBlank()
     val isLoggedIn get() = prefs.getString(KEY_REFRESH, null) != null
 
+    /**
+     * La sesión se inició con menos permisos de los que pide la app ahora (p. ej. antes de "Reproducir en…").
+     * El refresh token conserva los permisos de cuando se dio: hay que volver a conectar para tener los nuevos.
+     */
+    val needsReconnect get() = isLoggedIn && prefs.getString(KEY_SCOPES, "") != SCOPES
+
     /** Prepara verifier y state (guardados por si el sistema mata la app mientras Firefox está al frente). */
     fun authorizeUrl(): String {
         val verifier = randomUrlSafe(64)
@@ -60,7 +66,7 @@ class SpotifyAuth(context: Context) {
         )
         if (!response.isSuccessful) return "Spotify respondió ${response.code}"
         saveTokens(JSONObject(response.body))
-        prefs.edit().remove(KEY_VERIFIER).remove(KEY_STATE).apply()
+        prefs.edit().remove(KEY_VERIFIER).remove(KEY_STATE).putString(KEY_SCOPES, SCOPES).apply()
         return null
     }
 
@@ -113,12 +119,14 @@ class SpotifyAuth(context: Context) {
     companion object {
         const val CALLBACK_PORT = 8898
         const val REDIRECT_URI = "http://127.0.0.1:$CALLBACK_PORT/callback"
-        private const val SCOPES = "user-read-currently-playing user-read-playback-state"
+        // user-modify-playback-state: pasar la música a otro aparato (Reproducir en…).
+        private const val SCOPES = "user-read-currently-playing user-read-playback-state user-modify-playback-state"
         private const val TOKEN_URL = "https://accounts.spotify.com/api/token"
         private val CLIENT_ID = BuildConfig.SPOTIFY_CLIENT_ID
 
         private const val KEY_REFRESH = "refresh_token"
         private const val KEY_VERIFIER = "code_verifier"
         private const val KEY_STATE = "state"
+        private const val KEY_SCOPES = "scopes"
     }
 }

@@ -33,6 +33,9 @@ object Http {
     fun postJson(url: String, json: String, headers: Map<String, String> = emptyMap()): Response =
         request(url, "POST", headers, body = json.toByteArray() to "application/json")
 
+    fun putJson(url: String, json: String, headers: Map<String, String> = emptyMap()): Response =
+        request(url, "PUT", headers, body = json.toByteArray() to "application/json")
+
     fun bytes(url: String, headers: Map<String, String> = emptyMap()): ByteArray? {
         val c = open(url)
         headers.forEach { (k, v) -> c.setRequestProperty(k, v) }

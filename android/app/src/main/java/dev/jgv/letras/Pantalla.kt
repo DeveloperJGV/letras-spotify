@@ -373,7 +373,15 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private fun pollOnce(): Pair<PollResult, Long> {
         if (javbots.isConfigured) {
             val r = javbots.poll()
-            if (r is PollResult.Playing) return r to nextPollDelay(r.track, JAVBOTS_POLL_MS)
+            if (r is PollResult.Playing) {
+                // Si la PC está en pausa (o Spotify se cerró y Javbots recuerda lo último) y hay sesión, se
+                // pregunta también a la API: si algo suena en otro aparato, gana eso.
+                if (!r.track.isPlaying && auth.isLoggedIn) {
+                    val api = player.poll()
+                    if (api is PollResult.Playing && api.track.isPlaying) return api to nextPollDelay(api.track, SPOTIFY_POLL_MS)
+                }
+                return r to nextPollDelay(r.track, JAVBOTS_POLL_MS)
+            }
             if (!auth.isLoggedIn) return r to (if (r is PollResult.Idle) JAVBOTS_POLL_MS * 2 else ERROR_POLL_MS)
         }
         val r = player.poll()
@@ -844,56 +852,96 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
      */
     fun showOptions(activity: Activity, onLogout: () -> Unit) {
         val s = state
-        val items = mutableListOf(
-            context.getString(R.string.opt_background, backgroundName(s.folder)),
-            context.getString(R.string.opt_fit, context.getString(if (s.fitImage) R.string.opt_fit_whole else R.string.opt_fit_fill)),
+        val reopen = { showOptions(activity, onLogout) }
+        // (texto, qué hace). Las que cambian un ajuste vuelven a abrir el menú; las que abren otra cosa, no.
+        val items = mutableListOf<Pair<String, () -> Unit>>(
+            context.getString(R.string.opt_background, backgroundName(s.folder)) to { pickBackground(activity, onLogout) },
+            context.getString(R.string.opt_fit, context.getString(if (s.fitImage) R.string.opt_fit_whole else R.string.opt_fit_fill)) to
+                { dispatch(Action.ToggleFit); reopen() },
             context.getString(
                 R.string.opt_every,
                 if (s.imageEveryMin == 0) context.getString(R.string.opt_every_song)
                 else context.getString(R.string.opt_every_min, s.imageEveryMin),
-            ),
-            context.getString(R.string.opt_scrim, context.resources.getStringArray(R.array.scrim_levels)[s.scrimLevel]),
-            context.getString(R.string.opt_quiet, context.getString(if (s.quietEnabled) R.string.quiet_auto else R.string.quiet_off)),
-            context.getString(R.string.opt_next_art),
-            context.getString(R.string.help_screensaver),
-            context.getString(R.string.help_title),
+            ) to { dispatch(Action.CycleImageEvery); reopen() },
+            context.getString(R.string.opt_scrim, context.resources.getStringArray(R.array.scrim_levels)[s.scrimLevel]) to
+                { dispatch(Action.CycleScrim); reopen() },
+            context.getString(R.string.opt_quiet, context.getString(if (s.quietEnabled) R.string.quiet_auto else R.string.quiet_off)) to
+                { dispatch(Action.ToggleQuiet); reopen() },
+            context.getString(R.string.opt_next_art) to {
+                val now = SystemClock.elapsedRealtime()
+                if (state.folder == null) backgrounds().getOrNull(1)?.let { dispatch(Action.BackgroundChosen(it, now)) }
+                else dispatch(Action.NextImage(now))
+            },
+            context.getString(R.string.help_screensaver) to { openScreensaverSettings(activity) },
+            context.getString(R.string.help_title) to { showHelp(activity) },
         )
-        if (auth.isLoggedIn) items += context.getString(R.string.logout)
+        // Con sesión: elegir en qué aparato suena Spotify (la PC, una bocina, el celular…).
+        if (auth.isLoggedIn) items += context.getString(R.string.opt_devices) to { pickDevice(activity) }
+        // Sesión de Spotify: "Cerrar sesión" si hay, o "Conectar con Spotify" si hay client ID (aunque Javbots
+        // esté configurado: así la tablet puede funcionar sin la PC).
+        if (auth.isLoggedIn) items += context.getString(R.string.logout) to onLogout
+        else if (auth.hasClientId) items += context.getString(R.string.connect) to { host.startLogin() }
         AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(R.string.opt_title)
-            .setItems(items.toTypedArray()) { _, which ->
-                val now = SystemClock.elapsedRealtime()
-                when (which) {
-                    0 -> {
-                        pickBackground(activity, onLogout)
-                        return@setItems
-                    }
-                    1 -> dispatch(Action.ToggleFit)
-                    2 -> dispatch(Action.CycleImageEvery)
-                    3 -> dispatch(Action.CycleScrim)
-                    4 -> dispatch(Action.ToggleQuiet)
-                    5 -> {
-                        if (state.folder == null) backgrounds().getOrNull(1)?.let { dispatch(Action.BackgroundChosen(it, now)) }
-                        else dispatch(Action.NextImage(now))
-                        return@setItems
-                    }
-                    6 -> {
-                        openScreensaverSettings(activity)
-                        return@setItems
-                    }
-                    7 -> {
-                        showHelp(activity)
-                        return@setItems
-                    }
-                    8 -> {
-                        onLogout()
-                        return@setItems
-                    }
-                }
-                showOptions(activity, onLogout)
-            }
+            .setItems(items.map { it.first }.toTypedArray()) { _, which -> items[which].second() }
             .setNegativeButton(R.string.close, null)
             .show()
+    }
+
+    /**
+     * Lista de aparatos con Spotify abierto; al tocar uno la música se pasa ahí. Si la sesión es de antes de pedir
+     * el permiso de controlar la reproducción, primero hay que volver a conectar.
+     */
+    private fun pickDevice(activity: Activity) {
+        if (auth.needsReconnect) {
+            AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle(R.string.opt_devices)
+                .setMessage(R.string.devices_reconnect)
+                .setPositiveButton(R.string.connect) { _, _ -> host.startLogin() }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+            return
+        }
+        val loading = Toast.makeText(context, R.string.devices_loading, Toast.LENGTH_SHORT).also { it.show() }
+        scope.launch {
+            val devices = withContext(Dispatchers.IO) { player.devices() }.orEmpty()
+            loading.cancel()
+            if (activity.isFinishing) return@launch
+            if (devices.isEmpty()) {
+                toast(context.getString(R.string.devices_none))
+                return@launch
+            }
+            val names = devices.map { if (it.type.isBlank()) it.name else "${it.name} · ${deviceType(it.type)}" }
+            AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle(R.string.devices_title)
+                .setSingleChoiceItems(names.toTypedArray(), devices.indexOfFirst { it.isActive }) { dialog, which ->
+                    dialog.dismiss()
+                    transferTo(devices[which])
+                }
+                .setNegativeButton(R.string.close, null)
+                .show()
+        }
+    }
+
+    private fun deviceType(type: String) = when (type.lowercase()) {
+        "computer" -> "PC"
+        "smartphone" -> "celular"
+        "speaker" -> "bocina"
+        "tv" -> "TV"
+        "tablet" -> "tablet"
+        else -> type.lowercase()
+    }
+
+    /** Pasa la música al aparato y vuelve a preguntar en seguida para verlo reflejado. */
+    private fun transferTo(device: Device) {
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) { player.transferTo(device.id) }
+            toast(context.getString(if (ok) R.string.devices_moved else R.string.devices_failed, device.name))
+            if (!ok) return@launch
+            delay(CONTROL_REFRESH_MS)
+            val (result, _) = withContext(Dispatchers.IO) { pollOnce() }
+            dispatch(Action.Polled(result, SystemClock.elapsedRealtime(), viaJavbots = javbots.isConfigured))
+        }
     }
 
     /** Lista de fondos para escoger: el cielo y cada carpeta con cuántas imágenes tiene. */

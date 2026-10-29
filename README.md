@@ -131,6 +131,7 @@ Te quiero
 | Siguiente imagen               | (también la flechita junto al crédito)                    |
 | Protector de pantalla          | abre los ajustes de Android para elegirlo                 |
 | Cómo se usa                    | la ayuda                                                  |
+| Reproducir en…                 | (si hay sesión) pasa la música a otro aparato con Spotify |
 | Cerrar sesión de Spotify       | (si hay sesión)                                           |
 
 ## Configurar y compilar

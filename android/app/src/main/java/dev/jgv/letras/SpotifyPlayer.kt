@@ -43,8 +43,39 @@ sealed interface PollResult {
     data object NetworkError : PollResult
 }
 
+/** Un aparato con Spotify abierto (Spotify Connect): la PC, una bocina, el celular… */
+data class Device(val id: String, val name: String, val type: String, val isActive: Boolean)
+
 /** Lee lo que suena en la cuenta, en cualquier dispositivo (la PC incluida). */
 class SpotifyPlayer(private val auth: SpotifyAuth) {
+
+    /** Aparatos disponibles ahora mismo, o null si no se pudo preguntar (sin sesión o sin red). */
+    fun devices(): List<Device>? = try {
+        val token = auth.token()
+        if (token == null) null else {
+            val response = Http.get("https://api.spotify.com/v1/me/player/devices", mapOf("Authorization" to "Bearer $token"))
+            if (!response.isSuccessful) null else {
+                val arr = JSONObject(response.body).optJSONArray("devices")
+                (0 until (arr?.length() ?: 0)).map { arr!!.getJSONObject(it) }
+                    .filter { !it.isNull("id") }
+                    .map { Device(it.getString("id"), it.getString("name"), it.optString("type"), it.optBoolean("is_active")) }
+            }
+        }
+    } catch (_: IOException) {
+        null
+    }
+
+    /** Pasa la reproducción al aparato (y la deja sonando). Necesita el permiso user-modify-playback-state. */
+    fun transferTo(deviceId: String): Boolean = try {
+        val token = auth.token()
+        token != null && Http.putJson(
+            "https://api.spotify.com/v1/me/player",
+            """{"device_ids":["$deviceId"],"play":true}""",
+            mapOf("Authorization" to "Bearer $token"),
+        ).isSuccessful
+    } catch (_: IOException) {
+        false
+    }
 
     fun poll(): PollResult = try {
         pollOnce(retryOn401 = true)
