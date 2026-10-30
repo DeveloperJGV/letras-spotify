@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
 import android.view.MotionEvent
@@ -40,6 +41,11 @@ class MainActivity : Activity(), Pantalla.Host {
         handleExtras()
         loginError?.let { pantalla.refresh(it) }
         loginError = null
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        pantalla.onOrientationChanged()
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {

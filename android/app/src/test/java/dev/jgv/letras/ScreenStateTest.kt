@@ -38,6 +38,88 @@ class ScreenStateTest {
 
     private fun spotify(track: NowPlaying, now: Long = 0) = Action.Polled(PollResult.Playing(track), now)
 
+    // ---- Traducción ----
+
+    private val traduccion = Translation("en", "es", listOf("one", "two", "three"))
+
+    @Test
+    fun `al llegar la letra se pide su traduccion al idioma elegido`() {
+        val r = run(ScreenState(), spotify(song()), Action.LyricsLoaded("a", synced))
+        assertTrue(Effect.Translate("a", listOf("uno", "dos", "tres"), "es") in r.effects)
+        assertNull(r.state.translatedLines)
+    }
+
+    @Test
+    fun `con Javbots la letra llega en la consulta y tambien se traduce`() {
+        val r = run(ScreenState(), javbots(song()), javbots(song(), synced))
+        assertEquals(1, r.effects.count { it is Effect.Translate })
+    }
+
+    @Test
+    fun `sin idioma elegido no se traduce nada`() {
+        val r = run(ScreenState(translateTo = null), spotify(song()), Action.LyricsLoaded("a", synced))
+        assertTrue(r.effects.none { it is Effect.Translate })
+    }
+
+    @Test
+    fun `la traduccion se guarda si es de la cancion y el idioma actuales`() {
+        val start = run(ScreenState(), spotify(song()), Action.LyricsLoaded("a", synced)).state
+        val r = reduce(start, Action.TranslationLoaded("a", "es", traduccion))
+        assertEquals(listOf("one", "two", "three"), r.state.translatedLines)
+        assertFalse(r.state.sameLanguage)
+        // Tarde (otra canción) o de otro idioma: se ignora.
+        assertNull(reduce(start, Action.TranslationLoaded("b", "es", traduccion)).state.translation)
+        assertNull(reduce(start, Action.TranslationLoaded("a", "en", traduccion)).state.translation)
+    }
+
+    @Test
+    fun `si la cancion ya esta en ese idioma no hay renglones traducidos`() {
+        val start = run(ScreenState(), spotify(song()), Action.LyricsLoaded("a", synced)).state
+        val r = reduce(start, Action.TranslationLoaded("a", "es", Translation("es", "es", null)))
+        assertTrue(r.state.sameLanguage)
+        assertNull(r.state.translatedLines)
+    }
+
+    @Test
+    fun `si la traduccion falla se reintenta en la siguiente consulta`() {
+        val start = run(ScreenState(), spotify(song()), Action.LyricsLoaded("a", synced)).state
+        val failed = reduce(start, Action.TranslationLoaded("a", "es", null)).state
+        assertTrue(failed.translationFailed)
+        val r = reduce(failed, spotify(song(), now = 1_000))
+        assertTrue(r.effects.any { it is Effect.Translate })
+        assertFalse(r.state.translationFailed)
+    }
+
+    @Test
+    fun `otra cancion borra la traduccion anterior`() {
+        val start = run(ScreenState(), spotify(song()), Action.LyricsLoaded("a", synced), Action.TranslationLoaded("a", "es", traduccion)).state
+        val r = reduce(start, spotify(song("b")))
+        assertNull(r.state.translation)
+        assertFalse(r.state.translationFailed)
+    }
+
+    @Test
+    fun `cambiar el idioma gira espanol, ingles, no y vuelve a traducir la letra que se ve`() {
+        val start = run(ScreenState(), spotify(song()), Action.LyricsLoaded("a", synced), Action.TranslationLoaded("a", "es", traduccion)).state
+        val en = reduce(start, Action.CycleTranslateTo)
+        assertEquals("en", en.state.translateTo)
+        assertNull(en.state.translation)
+        assertTrue(Effect.Translate("a", listOf("uno", "dos", "tres"), "en") in en.effects)
+        assertTrue(Effect.SavePrefs in en.effects)
+        val off = reduce(en.state, Action.CycleTranslateTo)
+        assertNull(off.state.translateTo)
+        assertTrue(off.effects.none { it is Effect.Translate })
+        assertEquals("es", reduce(off.state, Action.CycleTranslateTo).state.translateTo)
+    }
+
+    @Test
+    fun `un toque en la letra alterna la traduccion y se recuerda`() {
+        val r = reduce(ScreenState(), Action.ToggleTranslation)
+        assertTrue(r.state.showTranslation)
+        assertTrue(Effect.SavePrefs in r.effects)
+        assertFalse(reduce(r.state, Action.ToggleTranslation).state.showTranslation)
+    }
+
     // ---- Canciones y letra ----
 
     @Test

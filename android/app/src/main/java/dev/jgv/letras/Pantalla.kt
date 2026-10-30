@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.graphics.Typeface
 import android.os.BatteryManager
@@ -68,6 +69,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private val scope = MainScope()
     val auth = SpotifyAuth(context)
     private val player = SpotifyPlayer(auth)
+    private val traductor = Traductor(context)
     private val javbots = JavbotsSource(context)
     private val clima = Clima(context)
 
@@ -106,6 +108,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private var pollJob: Job? = null
     private var tickJob: Job? = null
     private var lyricsJob: Job? = null
+    private var translateJob: Job? = null
     private var coverJob: Job? = null
     private var imageJob: Job? = null
     private var datosJob: Job? = null
@@ -139,7 +142,21 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         override fun onLongPress(e: MotionEvent) {
             host.openMenu(Menu.OPTIONS)
         }
+
+        /** En vertical, un toque sobre la letra la cambia por su traducción (en horizontal ya se ven las dos). */
+        override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+            if (landscape || !state.showingLyrics || overDogs(e) || !overLyrics(e)) return false
+            when {
+                state.translateTo == null -> toast(context.getString(R.string.translate_off_hint))
+                state.sameLanguage -> toast(context.getString(R.string.same_language, langName(state.translateTo)))
+                state.translatedLines == null -> toast(context.getString(R.string.translating))
+                else -> dispatch(Action.ToggleTranslation)
+            }
+            return true
+        }
     })
+
+    private val landscape get() = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     init {
         connect.setOnClickListener { host.startLogin() }
@@ -211,7 +228,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         if (changed({ it.track })) renderHeader(s)
         if (changed({ it.showControls }, { it.track?.isPlaying }, { it.track?.volume })) renderControls(s)
         // La letra se compara por identidad: el reducer solo la cambia cuando llega otra.
-        if (changed({ it.lyricsForId }, { it.lyricsFailed }) || old?.lyrics !== s.lyrics) {
+        if (changed({ it.lyricsForId }, { it.lyricsFailed }, { it.translatedLines }, { it.showTranslation }) || old?.lyrics !== s.lyrics) {
             renderLyrics(s)
         } else if (changed({ it.currentLine })) {
             highlight(s.currentLine)
@@ -245,6 +262,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private fun perform(effect: Effect) {
         when (effect) {
             is Effect.FindLyrics -> findLyrics(effect.track)
+            is Effect.Translate -> translate(effect)
             is Effect.LoadCover -> loadCover(effect.url, effect.headers)
             Effect.NextImage -> nextImage()
             Effect.HideImage -> hideImage()
@@ -285,6 +303,11 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     /** Toques de toda la pantalla: el doble toque y mantener presionado funcionan encima de la letra. */
     fun onTouch(ev: MotionEvent) {
         gestures.onTouchEvent(ev)
+    }
+
+    /** Giró la tablet: en horizontal la letra va en dos columnas (original y traducción), en vertical en una. */
+    fun onOrientationChanged() {
+        renderLyrics(state)
     }
 
     /** Solo debug: hora del cielo, fase de la luna, fondo ("cielo", o el nombre de una carpeta) y clima (código WMO) fijos. */
@@ -466,6 +489,18 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
 
     // ---- Efectos ----
 
+    private fun translate(e: Effect.Translate) {
+        translateJob?.cancel()
+        translateJob = scope.launch {
+            val result = try {
+                withContext(Dispatchers.IO) { traductor.translate(e.trackId, e.lines, e.lang) }
+            } catch (_: IOException) {
+                null
+            }
+            dispatch(Action.TranslationLoaded(e.trackId, e.lang, result))
+        }
+    }
+
     private fun findLyrics(t: NowPlaying) {
         lyricsJob?.cancel()
         lyricsJob = scope.launch {
@@ -474,7 +509,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             } catch (e: IOException) {
                 android.util.Log.w("Letras", "LRCLIB: $e")
                 null
-            } catch (_: org.json.JSONException) {
+            } catch (e: org.json.JSONException) {
+                android.util.Log.w("Letras", "LRCLIB JSON: $e")
                 null
             }
             dispatch(Action.LyricsLoaded(t.id, found))
@@ -659,19 +695,36 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private fun renderLyrics(s: ScreenState) {
         when (val l = s.lyrics) {
             null -> renderMessage(context.getString(if (s.lyricsFailed) R.string.network_error else R.string.searching))
-            is Lyrics.Synced -> renderLines(l.lines.map { it.text.ifBlank { "♪" } }, synced = true)
-            is Lyrics.Plain -> renderLines(l.lines, synced = false)
+            is Lyrics.Synced -> renderLines(l.lines.map { it.text }, s.translatedLines, synced = true)
+            is Lyrics.Plain -> renderLines(l.lines, s.translatedLines, synced = false)
             Lyrics.Instrumental -> renderMessage(context.getString(R.string.instrumental))
             Lyrics.NotFound -> renderMessage(context.getString(R.string.no_lyrics))
         }
-        if (s.lyrics is Lyrics.Synced && s.currentLine >= 0) highlight(s.currentLine)
+        if (s.lyrics is Lyrics.Synced && s.currentLine >= 0) {
+            highlight(s.currentLine)
+            // Recién dibujada (p. ej. al cambiar a la traducción), el renglón actual va al centro aunque se haya
+            // tocado la letra hace poco; con las medidas ya hechas.
+            lyricsScroll.post { if (state.lyrics is Lyrics.Synced && state.currentLine >= 0) scrollToLine(state.currentLine) }
+        }
     }
 
-    private fun renderLines(lines: List<String>, synced: Boolean) {
+    /**
+     * Un renglón por línea de la letra. En horizontal con traducción, dos columnas (original | traducción); en
+     * vertical, una sola: el original o, si se tocó la letra, la traducción.
+     */
+    private fun renderLines(lines: List<String>, translated: List<String>?, synced: Boolean) {
         lyricsContainer.removeAllViews()
         val color = color(if (synced) R.color.line_future else R.color.text_primary)
-        lines.forEach { text ->
-            lyricsContainer.addView(lineView(text, color, if (synced) 28f else 24f))
+        val twoColumns = landscape && translated != null
+        val size = if (twoColumns) (if (synced) 24f else 21f) else (if (synced) 28f else 24f)
+        lines.forEachIndexed { i, original ->
+            val other = translated?.getOrNull(i).orEmpty()
+            val texts = when {
+                twoColumns -> listOf(original.ifBlank { "♪" }, other.ifBlank { if (original.isBlank()) "♪" else "" })
+                state.showTranslation && translated != null -> listOf(other.ifBlank { original.ifBlank { "♪" } })
+                else -> listOf(original.ifBlank { "♪" })
+            }
+            lyricsContainer.addView(rowView(texts, color, size))
         }
         highlighted = -1
         lyricsScroll.scrollTo(0, 0)
@@ -679,24 +732,31 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
 
     private fun renderMessage(text: String) {
         lyricsContainer.removeAllViews()
-        lyricsContainer.addView(lineView(text, color(R.color.text_secondary), 22f).apply {
-            gravity = Gravity.CENTER_HORIZONTAL
+        lyricsContainer.addView(rowView(listOf(text), color(R.color.text_secondary), 22f).apply {
+            (getChildAt(0) as TextView).gravity = Gravity.CENTER_HORIZONTAL
         })
         highlighted = -1
         lyricsScroll.scrollTo(0, 0)
     }
 
-    private fun lineView(text: String, color: Int, sizeSp: Float) = TextView(context).apply {
-        this.text = text
-        setTextColor(color)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
-        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        setShadowLayer(6f, 0f, 1f, 0x99000000.toInt())
-        val v = dp(10)
-        // Margen a la derecha para que el renglón actual, agrandado, no se corte.
-        setPadding(0, v, dp(40), v)
+    /** Un renglón: uno o dos textos lado a lado (original y traducción), cada uno con la mitad del ancho. */
+    private fun rowView(texts: List<String>, color: Int, sizeSp: Float) = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
         pivotX = 0f
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        texts.forEachIndexed { i, text ->
+            addView(TextView(context).apply {
+                this.text = text
+                setTextColor(color)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                setShadowLayer(6f, 0f, 1f, 0x99000000.toInt())
+                val v = dp(10)
+                // Margen a la derecha para que el renglón actual, agrandado, no se corte (y aire entre columnas).
+                setPadding(if (i == 0) 0 else dp(16), v, dp(40), v)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+        }
     }
 
     private fun highlight(index: Int) {
@@ -706,16 +766,15 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         val future = color(R.color.line_future)
         val current = color(R.color.line_current)
         for (i in 0 until lyricsContainer.childCount) {
-            val line = lyricsContainer.getChildAt(i) as TextView
-            line.setTextColor(
-                when {
-                    i == index -> current
-                    i < index -> past
-                    else -> future
-                }
-            )
+            val row = lyricsContainer.getChildAt(i) as ViewGroup
+            val c = when {
+                i == index -> current
+                i < index -> past
+                else -> future
+            }
+            for (j in 0 until row.childCount) (row.getChildAt(j) as TextView).setTextColor(c)
             val scale = if (i == index) 1.05f else 1f
-            if (line.scaleX != scale) line.animate().scaleX(scale).scaleY(scale).setDuration(200).start()
+            if (row.scaleX != scale) row.animate().scaleX(scale).scaleY(scale).setDuration(200).start()
         }
         if (!recentlyTouched(SystemClock.elapsedRealtime())) scrollToLine(index.coerceAtLeast(0))
     }
@@ -820,6 +879,22 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         return e.rawY >= loc[1]
     }
 
+    /** El toque cayó en el espacio de la letra (entre el encabezado y los controles). */
+    private fun overLyrics(e: MotionEvent): Boolean {
+        if (lyricsScroll.visibility != View.VISIBLE) return false
+        val loc = IntArray(2)
+        lyricsScroll.getLocationOnScreen(loc)
+        return e.rawY >= loc[1] && e.rawY < loc[1] + lyricsScroll.height
+    }
+
+    private fun langName(code: String?) = context.getString(
+        when (code) {
+            "es" -> R.string.lang_es
+            "en" -> R.string.lang_en
+            else -> R.string.translate_off
+        }
+    )
+
     // ---- Fondos ----
 
     /** Las opciones de fondo: el cielo y cada carpeta con imágenes. */
@@ -867,6 +942,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
                 { dispatch(Action.CycleScrim); reopen() },
             context.getString(R.string.opt_quiet, context.getString(if (s.quietEnabled) R.string.quiet_auto else R.string.quiet_off)) to
                 { dispatch(Action.ToggleQuiet); reopen() },
+            context.getString(R.string.opt_translate, langName(s.translateTo)) to { dispatch(Action.CycleTranslateTo); reopen() },
             context.getString(R.string.opt_next_art) to {
                 val now = SystemClock.elapsedRealtime()
                 if (state.folder == null) backgrounds().getOrNull(1)?.let { dispatch(Action.BackgroundChosen(it, now)) }
@@ -979,6 +1055,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             imageEveryMin = p.getInt(KEY_EVERY, 0),
             scrimLevel = p.getInt(KEY_SCRIM, 1).coerceIn(0, ScreenState.SCRIM_LEVELS - 1),
             quietEnabled = p.getBoolean(KEY_QUIET, true),
+            translateTo = p.getString(KEY_TRANSLATE, "es")?.ifEmpty { null },
+            showTranslation = p.getBoolean(KEY_SHOW_TRANSLATION, false),
         )
     }
 
@@ -989,6 +1067,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             .putInt(KEY_EVERY, state.imageEveryMin)
             .putInt(KEY_SCRIM, state.scrimLevel)
             .putBoolean(KEY_QUIET, state.quietEnabled)
+            .putString(KEY_TRANSLATE, state.translateTo.orEmpty())
+            .putBoolean(KEY_SHOW_TRANSLATION, state.showTranslation)
             .apply()
     }
 
@@ -1009,6 +1089,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         const val KEY_EVERY = "arte_cada_min"
         const val KEY_SCRIM = "velo"
         const val KEY_QUIET = "modo_tranquilo"
+        const val KEY_TRANSLATE = "traducir_a"
+        const val KEY_SHOW_TRANSLATION = "ver_traduccion"
         /** La letra en modo tranquilo: más suave. */
         const val QUIET_LYRICS_ALPHA = 0.75f
         /** Carpeta de fondos que usa el modo tranquilo, si existe. */

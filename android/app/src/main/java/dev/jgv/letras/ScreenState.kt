@@ -73,8 +73,22 @@ data class ScreenState(
     val quietEnabled: Boolean = true,
     /** La carpeta de fondos para dormir ("Dormir"), si existe. */
     val sleepFolder: String? = null,
+    /** A qué idioma se traduce la letra ("es", "en"); null = sin traducción. */
+    val translateTo: String? = "es",
+    /** La traducción de [lyrics] (misma canción e idioma); null = todavía no llega (o no se pidió). */
+    val translation: Translation? = null,
+    /** La traducción falló por la red: se reintenta con la siguiente consulta. */
+    val translationFailed: Boolean = false,
+    /** En vertical, un toque en la letra la cambia por la traducción (y otro la regresa). */
+    val showTranslation: Boolean = false,
 ) {
     val showingLyrics get() = waiting == null
+
+    /** Los renglones traducidos, alineados con la letra, cuando los hay (y la canción no está ya en ese idioma). */
+    val translatedLines: List<String>? get() = translation?.lines
+
+    /** La canción ya estaba en el idioma al que se traduce. */
+    val sameLanguage get() = translation != null && translation.lines == null
 
     /**
      * Modo tranquilo: de noche, con música para dormir sonando (lenta, o lofi, ambient, piano, lluvia…). Baja el
@@ -115,6 +129,15 @@ data class ScreenState(
         const val LEAD_MS = 250L
         val IMAGE_EVERY_OPTIONS = listOf(0, 5, 15, 60)
         const val SCRIM_LEVELS = 3
+        /** Idiomas a los que se puede traducir, en el orden del menú (y luego "no"). */
+        val TRANSLATE_OPTIONS = listOf("es", "en")
+
+        /** Los renglones de una letra tal como se muestran, para traducirlos; null si no hay letra con texto. */
+        fun linesOf(lyrics: Lyrics?): List<String>? = when (lyrics) {
+            is Lyrics.Synced -> lyrics.lines.map { it.text }
+            is Lyrics.Plain -> lyrics.lines
+            else -> null
+        }
         /** Cuánto se ve cada tarjeta de datos. */
         const val DATO_MS = 25_000L
         /** Desde qué tan de noche (0..1) puede entrar el modo tranquilo. */
@@ -139,6 +162,12 @@ sealed interface Action {
     data class Polled(val result: PollResult, val now: Long, val viaJavbots: Boolean = false) : Action
     /** Llegó la letra de LRCLIB para [trackId]; null = falló la red. */
     data class LyricsLoaded(val trackId: String, val lyrics: Lyrics?) : Action
+    /** Llegó la traducción de la letra de [trackId] a [lang]; null = falló la red. */
+    data class TranslationLoaded(val trackId: String, val lang: String, val translation: Translation?) : Action
+    /** Un toque en la letra (en vertical): original ↔ traducción. */
+    data object ToggleTranslation : Action
+    /** Opción del menú: español → inglés → no → español… */
+    data object CycleTranslateTo : Action
     /** Pasa el tiempo (unas 7 veces por segundo); [night], qué tan de noche es según el cielo. */
     data class Tick(val now: Long, val night: Float? = null) : Action
     data class BatteryChanged(val battery: Battery) : Action
@@ -161,6 +190,8 @@ sealed interface Action {
 sealed interface Effect {
     /** Buscar la letra en LRCLIB (cuando la fuente no la trae). */
     data class FindLyrics(val track: NowPlaying) : Effect
+    /** Traducir los renglones de la letra de [trackId] a [lang]. */
+    data class Translate(val trackId: String, val lines: List<String>, val lang: String) : Effect
     data class LoadCover(val url: String?, val headers: Map<String, String>) : Effect
     /** Poner otra imagen de la carpeta del fondo. */
     data object NextImage : Effect
@@ -196,6 +227,16 @@ fun reduce(s: ScreenState, action: Action): Result {
 private fun reduceAction(s: ScreenState, action: Action): Result = when (action) {
     is Action.Polled -> polled(s, action)
     is Action.LyricsLoaded -> lyricsLoaded(s, action)
+    is Action.TranslationLoaded -> translationLoaded(s, action)
+    Action.ToggleTranslation -> Result(s.copy(showTranslation = !s.showTranslation), listOf(Effect.SavePrefs))
+    Action.CycleTranslateTo -> {
+        val options = ScreenState.TRANSLATE_OPTIONS + null
+        val next = s.copy(
+            translateTo = options[(options.indexOf(s.translateTo) + 1) % options.size],
+            translation = null, translationFailed = false,
+        )
+        Result(next, listOf(Effect.SavePrefs) + translateEffect(next))
+    }
     is Action.Tick -> tick(if (action.night != null) s.copy(night = action.night) else s, action.now)
     is Action.BatteryChanged -> Result(s.copy(battery = action.battery))
     is Action.DatosChanged -> datosChanged(s, action)
@@ -241,7 +282,10 @@ private fun playing(s: ScreenState, r: PollResult.Playing, now: Long): Result {
 
     if (t.id != s.lyricsForId) {
         // Canción nueva: se busca su letra y, si el fondo cambia con cada canción, otra imagen.
-        next = next.copy(lyricsForId = t.id, lyrics = null, lyricsFailed = false, currentLine = -1)
+        next = next.copy(
+            lyricsForId = t.id, lyrics = null, lyricsFailed = false, currentLine = -1,
+            translation = null, translationFailed = false,
+        )
         if (!r.sourceHandlesLyrics) effects += Effect.FindLyrics(t)
         if (s.activeFolder != null && s.imageEveryMin == 0) {
             next = next.copy(lastImageAt = now)
@@ -255,6 +299,10 @@ private fun playing(s: ScreenState, r: PollResult.Playing, now: Long): Result {
     if (r.sourceHandlesLyrics && next.lyrics == null && r.lyrics != null) {
         next = next.copy(lyrics = r.lyrics)
         effects += Effect.Celebrate
+        effects += translateEffect(next)
+    } else if (s.translationFailed && next.lyrics != null) {
+        next = next.copy(translationFailed = false)
+        effects += translateEffect(next)
     }
     if (t.coverUrl != s.coverUrl) {
         next = next.copy(coverUrl = t.coverUrl)
@@ -277,8 +325,24 @@ private fun lyricsLoaded(s: ScreenState, a: Action.LyricsLoaded): Result {
     return if (a.lyrics == null) {
         Result(s.copy(lyricsFailed = true))
     } else {
-        Result(s.copy(lyrics = a.lyrics, lyricsFailed = false), listOf(Effect.Celebrate))
+        val next = s.copy(lyrics = a.lyrics, lyricsFailed = false)
+        Result(next, listOf(Effect.Celebrate) + translateEffect(next))
     }
+}
+
+/** Si hay letra con texto y un idioma elegido: pedir la traducción. */
+private fun translateEffect(s: ScreenState): List<Effect> {
+    val lang = s.translateTo ?: return emptyList()
+    val id = s.lyricsForId ?: return emptyList()
+    val lines = ScreenState.linesOf(s.lyrics) ?: return emptyList()
+    return listOf(Effect.Translate(id, lines, lang))
+}
+
+private fun translationLoaded(s: ScreenState, a: Action.TranslationLoaded): Result {
+    // Llegó tarde: ya suena otra, o se cambió el idioma.
+    if (s.lyricsForId != a.trackId || s.translateTo != a.lang) return Result(s)
+    return if (a.translation == null) Result(s.copy(translationFailed = true))
+    else Result(s.copy(translation = a.translation, translationFailed = false))
 }
 
 /** Si la que se ve sigue en la lista nueva, se queda (no salta a la primera solo porque se actualizó el clima). */

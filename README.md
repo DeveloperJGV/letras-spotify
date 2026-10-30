@@ -128,6 +128,7 @@ Te quiero
 | Cambiar imagen (con música)    | con cada canción · cada 5, 15 o 60 min                    |
 | Oscurecer detrás de la letra   | poco · medio · mucho                                      |
 | Modo tranquilo de noche        | automático · apagado                                      |
+| Traducir a                     | español · inglés · no (horizontal: dos columnas; vertical: un toque en la letra la cambia) |
 | Siguiente imagen               | (también la flechita junto al crédito)                    |
 | Protector de pantalla          | abre los ajustes de Android para elegirlo                 |
 | Cómo se usa                    | la ayuda                                                  |
