@@ -23,8 +23,11 @@ paseando abajo. Cuando no suena nada: reloj, sobre el cielo o sobre tus imágene
     <td width="50%"><img src="docs/capturas/reloj-noche.png" alt="Reloj de noche"><br>De noche: luna en su fase y Hunter y Tango dormidos.</td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/capturas/pausa-controles.png" alt="Pausa con controles"><br>En pausa: el reloj con los botones de la música a la mano.</td>
-    <td width="50%"><img src="docs/capturas/lunas.png" alt="Fases de la luna"><br>La luna sigue su fase real: creciente, gibosa, menguante…</td>
+    <td width="50%"><img src="docs/capturas/letra-controles.png" alt="Letra con los controles"><br>Al tocar la pantalla sale la píldora de la música; el renglón que se canta sube arriba de ella.</td>
+    <td width="50%"><img src="docs/capturas/pausa-controles.png" alt="Pausa con controles"><br>En pausa: el reloj con los controles de la música a la mano.</td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/capturas/lunas.png" alt="Fases de la luna"><br>La luna sigue su fase real: creciente, gibosa, menguante…</td>
   </tr>
 </table>
 
@@ -37,12 +40,20 @@ son de sus autores.
 - **De dónde sale la música:**
   1. **Javbots** (la oficina de agentes en la PC): sabe exactamente qué suena en el Spotify de la PC y ya trae
      la letra oficial. La tablet encuentra la PC sola en la red.
-  2. **API de Spotify** (respaldo, opcional): para cuando suena en otro aparato. Letra de [LRCLIB](https://lrclib.net).
+  2. **API de Spotify** (respaldo, opcional): para cuando suena en otro aparato (o la PC no tiene Javbots prendido).
+     Letra de [LRCLIB](https://lrclib.net).
 - **Botones siempre a la vista** arriba a la derecha: ayuda (?), cambiar fondo y opciones.
-- **Controles de la música** en una píldora flotante arriba de los perros: anterior, pausa, siguiente, volumen y
-  la barra de la canción (arrastrarla adelanta). Van por Javbots o por la API de Spotify (el aparato donde suene).
-  Sonando se esconden solos y vuelven al tocar la pantalla. Botones con rebote, play↔pausa que se transforma, y la
-  letra entra y se desliza suave al cambiar de canción.
+- **Controles de la música** en una píldora flotante arriba de los perros: anterior, play/pausa, siguiente,
+  volumen (tocar la bocina lo silencia) y la barra de la canción (arrastrarla adelanta o regresa).
+  - Van por Javbots (Spotify de la PC) o por la API de Spotify, al aparato donde esté sonando. Por la API piden
+    Spotify Premium; adelantar y el volumen exacto necesitan la sesión de Spotify en la tablet.
+  - Responden al instante: la pausa o el salto se ven en seguida, sin esperar a que Spotify conteste.
+  - Sonando, se esconden solos a los 6 s y vuelven al tocar la pantalla. En pausa se quedan.
+- **Movimiento suave:** los botones se hunden y rebotan, el ícono de play se transforma en pausa, con canción
+  nueva el título se desliza y la portada aparece con un rebote, la letra entra subiendo y avanza arrancando y
+  frenando suave.
+- **Traducción de la letra** (español o inglés): en horizontal, dos columnas (original y traducción); en vertical,
+  un toque en la letra la cambia. Si la canción ya está en ese idioma, no se traduce.
 - **En pausa** más de 20 s pasa al reloj con el botón de play a la mano.
 - **Modo tranquilo de noche:** si de noche suena música para dormir (tempo lento, o lofi, ambient, piano,
   lluvia… en el título, artista o disco), baja el brillo, oscurece la letra y Hunter y Tango se acuestan a escuchar
@@ -175,7 +186,7 @@ acciones ──► reduce(estado, acción) ──► estado nuevo + efectos
  batería, botones)      (Kotlin puro)          ▼          ▼
                                         Pantalla.render   Pantalla.perform
                                         (dibuja lo que    (buscar letra, portada,
-                                         cambió)           imagen, botón a la PC)
+                                         cambió)           imagen, botones de la música)
 ```
 
 | Archivo | Qué hace |

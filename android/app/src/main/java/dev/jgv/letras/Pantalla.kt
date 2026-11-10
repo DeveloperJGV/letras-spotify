@@ -449,8 +449,13 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             durationMs = 212_000, progressMs = seconds * 1000L, isPlaying = !paused, coverUrl = null, sampledAt = now,
             tempo = tempo,
         )
-        // En pausa se simula Javbots (con botones): a los 20 s pasa al reloj con los controles abajo.
-        dispatch(Action.Polled(PollResult.Playing(demo, Lyrics.NotFound.takeIf { paused }, sourceHandlesLyrics = paused), now))
+        // Con botones (como Javbots), para ver la píldora. En pausa, a los 20 s pasa al reloj con los controles abajo.
+        dispatch(
+            Action.Polled(
+                PollResult.Playing(demo, Lyrics.NotFound.takeIf { paused }, sourceHandlesLyrics = paused, controlVia = ControlVia.JAVBOTS),
+                now,
+            )
+        )
         startTicker()
     }
 
