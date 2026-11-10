@@ -39,8 +39,10 @@ son de sus autores.
      la letra oficial. La tablet encuentra la PC sola en la red.
   2. **API de Spotify** (respaldo, opcional): para cuando suena en otro aparato. Letra de [LRCLIB](https://lrclib.net).
 - **Botones siempre a la vista** arriba a la derecha: ayuda (?), cambiar fondo y opciones.
-- **Controles de la música** (con Javbots): anterior, pausa, siguiente y volumen del Spotify de la PC, abajo,
-  arriba de los perros.
+- **Controles de la música** en una píldora flotante arriba de los perros: anterior, pausa, siguiente, volumen y
+  la barra de la canción (arrastrarla adelanta). Van por Javbots o por la API de Spotify (el aparato donde suene).
+  Sonando se esconden solos y vuelven al tocar la pantalla. Botones con rebote, play↔pausa que se transforma, y la
+  letra entra y se desliza suave al cambiar de canción.
 - **En pausa** más de 20 s pasa al reloj con el botón de play a la mano.
 - **Modo tranquilo de noche:** si de noche suena música para dormir (tempo lento, o lofi, ambient, piano,
   lluvia… en el título, artista o disco), baja el brillo, oscurece la letra y Hunter y Tango se acuestan a escuchar

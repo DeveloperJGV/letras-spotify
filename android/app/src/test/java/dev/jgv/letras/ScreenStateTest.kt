@@ -258,8 +258,62 @@ class ScreenStateTest {
     // ---- Botones y batería ----
 
     @Test
-    fun `un boton de la musica se manda tal cual a la PC`() {
-        assertEquals(listOf<Effect>(Effect.SendControl("next")), reduce(ScreenState(), Action.Control("next")).effects)
+    fun `un boton de la musica se manda tal cual`() {
+        val s = run(ScreenState(), javbots(song(), synced)).state
+        assertEquals(listOf<Effect>(Effect.SendControl("next")), reduce(s, Action.Control("next")).effects)
+        assertTrue("sin canción no hay a quién mandarlo", reduce(ScreenState(), Action.Control("next")).effects.isEmpty())
+    }
+
+    @Test
+    fun `con sesion de Spotify tambien hay botones, aunque no este Javbots`() {
+        val r = reduce(ScreenState(), Action.Polled(PollResult.Playing(song(), controlVia = ControlVia.SPOTIFY), 0))
+        assertEquals(ControlVia.SPOTIFY, r.state.controlVia)
+        assertTrue(r.state.showControls)
+    }
+
+    @Test
+    fun `pausa se ve en seguida y la consulta vieja no la regresa`() {
+        val s = run(ScreenState(), javbots(song(progressMs = 10_000, sampledAt = 0), synced)).state
+        val paused = reduce(s, Action.Control("togglePlay", now = 2_000))
+        assertEquals(listOf<Effect>(Effect.SendControl("togglePlay")), paused.effects)
+        assertFalse(paused.state.track!!.isPlaying)
+        assertEquals("se congela donde iba", 12_000, paused.state.track!!.positionAt(9_000))
+        // Spotify todavía no lo refleja: la consulta dice que suena, pero se respeta la pausa.
+        val stale = reduce(paused.state, javbots(song(progressMs = 12_500, sampledAt = 2_500), synced, now = 2_500)).state
+        assertFalse(stale.track!!.isPlaying)
+        // Pasado el rato, manda lo que diga la consulta.
+        val later = reduce(stale, javbots(song(progressMs = 20_000, sampledAt = 10_000), synced, now = 10_000)).state
+        assertTrue(later.track!!.isPlaying)
+    }
+
+    @Test
+    fun `play desde el reloj de pausa regresa la letra en seguida`() {
+        val paused = song(playing = false)
+        val s = run(ScreenState(), javbots(paused, synced, now = 0), Action.Tick(25_000)).state
+        assertTrue(s.waiting is Waiting.Paused)
+        val r = reduce(s, Action.Control("togglePlay", now = 26_000)).state
+        assertNull(r.waiting)
+        assertTrue(r.track!!.isPlaying)
+    }
+
+    @Test
+    fun `adelantar mueve la cancion y el renglon en seguida`() {
+        val s = run(ScreenState(), javbots(song(progressMs = 0, sampledAt = 0), synced)).state
+        val r = reduce(s, Action.Seek(10_500, now = 1_000))
+        assertEquals(listOf<Effect>(Effect.SendSeek(10_500)), r.effects)
+        assertEquals(2, reduce(r.state, Action.Tick(1_200)).state.currentLine)
+        assertEquals("no pasa del final", listOf<Effect>(Effect.SendSeek(200_000)), reduce(s, Action.Seek(999_999, 0)).effects)
+    }
+
+    @Test
+    fun `el volumen cambia en seguida y si el boton no llega se suelta`() {
+        val s = run(ScreenState(), Action.Polled(PollResult.Playing(song().copy(volume = 0.5f), controlVia = ControlVia.SPOTIFY), 0)).state
+        val r = reduce(s, Action.SetVolume(0.8f, now = 1_000))
+        assertEquals(listOf<Effect>(Effect.SendVolume(0.8f, 0.5f)), r.effects)
+        assertEquals(0.8f, r.state.track!!.volume)
+        val failed = reduce(r.state, Action.ControlFailed).state
+        val polled = reduce(failed, Action.Polled(PollResult.Playing(song().copy(volume = 0.5f), controlVia = ControlVia.SPOTIFY), 1_500)).state
+        assertEquals(0.5f, polled.track!!.volume)
     }
 
     @Test

@@ -17,4 +17,38 @@
         <item name="android:background">@drawable/round_button</item>
         <item name="android:alpha">0.85</item>
     </style>
+
+    <!-- Botones dentro de la píldora de la música: sin círculo, solo la onda. -->
+    <style name="PillButton">
+        <item name="android:layout_width">44dp</item>
+        <item name="android:layout_height">44dp</item>
+        <item name="android:padding">10dp</item>
+        <item name="android:scaleType">fitCenter</item>
+        <item name="android:background">@drawable/flat_button</item>
+    </style>
+
+    <style name="PillSeek">
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">4dp</item>
+        <item name="android:maxHeight">4dp</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:paddingTop">10dp</item>
+        <item name="android:paddingBottom">10dp</item>
+        <item name="android:progressDrawable">@drawable/seek_track</item>
+        <item name="android:thumb">@drawable/seek_thumb</item>
+        <item name="android:thumbOffset">11dp</item>
+        <item name="android:splitTrack">false</item>
+        <item name="android:background">@null</item>
+    </style>
+
+    <!-- Tiempo de la canción: números del mismo ancho para que no baile. -->
+    <style name="PillTime">
+        <item name="android:layout_width">44dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:fontFeatureSettings">tnum</item>
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textSize">12sp</item>
+    </style>
 </resources>

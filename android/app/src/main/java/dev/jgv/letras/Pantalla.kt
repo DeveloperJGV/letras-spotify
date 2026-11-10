@@ -1,5 +1,8 @@
 package dev.jgv.letras
 
+import android.animation.ArgbEvaluator
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.BroadcastReceiver
@@ -9,6 +12,7 @@ import android.content.IntentFilter
 import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.graphics.Typeface
+import android.graphics.drawable.AnimatedVectorDrawable
 import android.os.BatteryManager
 import android.os.SystemClock
 import android.provider.Settings
@@ -18,11 +22,16 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
+import android.view.animation.PathInterpolator
 import android.widget.Button
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import kotlinx.coroutines.Dispatchers
@@ -101,7 +110,11 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private val connectHint: View = root.findViewById(R.id.connectHint)
     private val controls: View = root.findViewById(R.id.controls)
     private val playPause: ImageButton = root.findViewById(R.id.playPause)
-    private val volume: TextView = root.findViewById(R.id.volume)
+    private val volumeIcon: ImageButton = root.findViewById(R.id.volumeIcon)
+    private val volumeBar: SeekBar = root.findViewById(R.id.volumeBar)
+    private val progressBar: SeekBar = root.findViewById(R.id.progressBar)
+    private val elapsed: TextView = root.findViewById(R.id.elapsed)
+    private val total: TextView = root.findViewById(R.id.total)
 
     private var state = loadPrefs()
 
@@ -127,6 +140,17 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private var imageShown = false
     private var lastTouchAt = 0L
     private var highlighted = -1
+
+    // La píldora de la música: si está arriba, desde cuándo nadie toca, si se arrastra una barra y a qué volver del
+    // silencio. Su lugar (arriba de los perros) es pillY; escondida baja un poco.
+    private var pillUp = false
+    private var pokedAt = 0L
+    private var dragging = false
+    private var pillY = 0f
+    private var unmuteTo = 0.5f
+    private var scrollAnim: ObjectAnimator? = null
+    /** Adelantar y el volumen exacto van por la API de Spotify (sirve también para la PC); sin sesión, no. */
+    private val canUseApi get() = auth.isLoggedIn && !auth.needsReconnect
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context, intent: Intent) = onBattery(intent)
@@ -168,11 +192,64 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             setOnClickListener { host.exit() }
         }
         credit.setOnClickListener { dispatch(Action.NextImage(SystemClock.elapsedRealtime())) }
-        root.findViewById<View>(R.id.btnPrevious).setOnClickListener { dispatch(Action.Control("previous")) }
-        playPause.setOnClickListener { dispatch(Action.Control("togglePlay")) }
-        root.findViewById<View>(R.id.btnNext).setOnClickListener { dispatch(Action.Control("next")) }
-        root.findViewById<View>(R.id.btnVolumeDown).setOnClickListener { dispatch(Action.Control("volumeDown")) }
-        root.findViewById<View>(R.id.btnVolumeUp).setOnClickListener { dispatch(Action.Control("volumeUp")) }
+        root.findViewById<View>(R.id.btnPrevious).setOnClickListener { control("previous") }
+        playPause.setOnClickListener { control("togglePlay") }
+        root.findViewById<View>(R.id.btnNext).setOnClickListener { control("next") }
+        volumeIcon.setOnClickListener {
+            val v = state.track?.volume ?: return@setOnClickListener
+            if (v > 0f) unmuteTo = v
+            poke()
+            dispatch(Action.SetVolume(if (v > 0f) 0f else unmuteTo, SystemClock.elapsedRealtime()))
+        }
+        progressBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
+                val t = state.track ?: return
+                if (fromUser) elapsed.text = clockText(t.durationMs * progress / bar.max)
+            }
+
+            override fun onStartTrackingTouch(bar: SeekBar) {
+                dragging = true
+            }
+
+            override fun onStopTrackingTouch(bar: SeekBar) {
+                dragging = false
+                poke()
+                val t = state.track ?: return
+                if (!canUseApi) {
+                    toast(context.getString(if (auth.needsReconnect) R.string.control_reconnect else R.string.seek_needs_login))
+                    renderProgress(SystemClock.elapsedRealtime())
+                    return
+                }
+                dispatch(Action.Seek(t.durationMs * bar.progress / bar.max, SystemClock.elapsedRealtime()))
+            }
+        })
+        volumeBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
+                if (fromUser) volumeIcon.setImageResource(if (progress == 0) R.drawable.ic_volume_off else R.drawable.ic_volume_up)
+            }
+
+            override fun onStartTrackingTouch(bar: SeekBar) {
+                dragging = true
+            }
+
+            override fun onStopTrackingTouch(bar: SeekBar) {
+                dragging = false
+                poke()
+                dispatch(Action.SetVolume(bar.progress / bar.max.toFloat(), SystemClock.elapsedRealtime()))
+            }
+        })
+        // Todos los botones se hunden al tocarlos y rebotan al soltar.
+        listOf(
+            R.id.btnPrevious, R.id.playPause, R.id.btnNext, R.id.volumeIcon, R.id.btnHelp, R.id.btnBackground,
+            R.id.btnOptions, R.id.btnExit, R.id.connect,
+        ).forEach { bouncy(root.findViewById(it)) }
+        // La píldora: a lo ancho en vertical; centrada y no tan larga en horizontal.
+        root.addOnLayoutChangeListener { _, l, _, r, _, ol, _, or_, _ ->
+            if (r - l != or_ - ol) {
+                val w = minOf(r - l - dp(32), dp(PILL_MAX_DP))
+                if (controls.layoutParams.width != w) controls.layoutParams = controls.layoutParams.apply { width = w }
+            }
+        }
 
         // El clima y la pila se acomodan a la altura del reloj cada que este se mueve.
         clock.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> layoutSides() }
@@ -189,7 +266,11 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         datoBox.addOnLayoutChangeListener { _, _, t, _, _, _, ot, _, _ -> if (t != ot) layoutSides() }
 
         // Si la persona desliza la letra a mano, el auto-scroll espera unos segundos.
-        lyricsScroll.setOnTouchListener { _, _ -> lastTouchAt = SystemClock.elapsedRealtime(); false }
+        lyricsScroll.setOnTouchListener { _, _ ->
+            lastTouchAt = SystemClock.elapsedRealtime()
+            scrollAnim?.cancel()
+            false
+        }
         // La letra vive entre el encabezado y la parte de abajo (controles y perros): nada se encima.
         val relayout = View.OnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
             if (bottom - top != oldBottom - oldTop) {
@@ -225,11 +306,13 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         fun changed(vararg part: (ScreenState) -> Any?) = old == null || part.any { it(old) != it(s) }
 
         if (changed({ it.waiting })) renderWaiting(s)
-        if (changed({ it.track })) renderHeader(s)
-        if (changed({ it.showControls }, { it.track?.isPlaying }, { it.track?.volume })) renderControls(s)
+        if (changed({ it.track })) renderHeader(old, s)
+        if (changed({ it.showControls }, { it.showingLyrics }, { it.track?.isPlaying }, { it.track?.volume })) renderControls(old, s)
         // La letra se compara por identidad: el reducer solo la cambia cuando llega otra.
-        if (changed({ it.lyricsForId }, { it.lyricsFailed }, { it.translatedLines }, { it.showTranslation }) || old?.lyrics !== s.lyrics) {
-            renderLyrics(s)
+        if (changed({ it.lyricsForId }, { it.lyricsFailed }) || old?.lyrics !== s.lyrics) {
+            renderLyrics(s, Entrance.NEW)
+        } else if (changed({ it.translatedLines }, { it.showTranslation })) {
+            renderLyrics(s, Entrance.SWAP)
         } else if (changed({ it.currentLine })) {
             highlight(s.currentLine)
         }
@@ -268,6 +351,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             Effect.HideImage -> hideImage()
             Effect.Celebrate -> dogs.celebrate()
             is Effect.SendControl -> sendControl(effect.command)
+            is Effect.SendSeek -> sendSeek(effect.positionMs)
+            is Effect.SendVolume -> sendVolume(effect.volume, effect.from)
             Effect.SavePrefs -> savePrefs()
             Effect.AnnounceBackground -> toast(context.getString(R.string.bg_now, backgroundName(state.folder)))
         }
@@ -302,12 +387,14 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
 
     /** Toques de toda la pantalla: el doble toque y mantener presionado funcionan encima de la letra. */
     fun onTouch(ev: MotionEvent) {
+        // Cualquier toque trae de regreso los controles de la música (si se habían escondido).
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) poke()
         gestures.onTouchEvent(ev)
     }
 
     /** Giró la tablet: en horizontal la letra va en dos columnas (original y traducción), en vertical en una. */
     fun onOrientationChanged() {
-        renderLyrics(state)
+        renderLyrics(state, Entrance.SWAP)
     }
 
     /** Solo debug: hora del cielo, fase de la luna, fondo ("cielo", o el nombre de una carpeta) y clima (código WMO) fijos. */
@@ -438,6 +525,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         val now = SystemClock.elapsedRealtime()
         val darkness = SkyView.darkness(sky.forcedHour ?: SkyView.currentHour())
         dispatch(Action.Tick(now, darkness))
+        updatePill(now)
+        renderProgress(now)
         dogs.night = darkness
         clock.night = darkness
         battery.night = darkness
@@ -530,22 +619,89 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
                     null
                 }
             }
-            if (state.coverUrl == url) cover.setImageBitmap(bitmap)
+            if (state.coverUrl != url || bitmap == null) return@launch
+            // La portada nueva aparece con un pequeño rebote.
+            cover.setImageBitmap(bitmap)
+            cover.alpha = 0f
+            cover.scaleX = 0.8f
+            cover.scaleY = 0.8f
+            cover.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(450).setInterpolator(OvershootInterpolator(1.6f)).start()
         }
     }
 
-    /** Manda el botón a Spotify en la PC (por Javbots) y vuelve a preguntar en seguida para verlo reflejado. */
+    /** Un botón de la música (anterior, play/pausa, siguiente). */
+    private fun control(command: String) {
+        poke()
+        dispatch(Action.Control(command, SystemClock.elapsedRealtime()))
+    }
+
+    /**
+     * Manda el botón por Javbots (Spotify en la PC) o por la API de Spotify (el aparato donde suene) y vuelve a
+     * preguntar en seguida para verlo reflejado. Play/pausa ya se ve cambiado: el estado trae lo que se quiere.
+     */
     private fun sendControl(command: String) {
+        val via = state.controlVia ?: return
+        if (via == ControlVia.SPOTIFY && auth.needsReconnect) return controlFailed(R.string.control_reconnect)
+        val wantPlaying = state.track?.isPlaying == true
         scope.launch {
-            val ok = withContext(Dispatchers.IO) { javbots.control(command) }
-            if (!ok) {
-                toast(context.getString(R.string.control_failed))
-                return@launch
+            val ok = withContext(Dispatchers.IO) {
+                when (via) {
+                    ControlVia.JAVBOTS -> javbots.control(command)
+                    ControlVia.SPOTIFY -> when (command) {
+                        "togglePlay" -> player.play(wantPlaying)
+                        "next" -> player.next()
+                        "previous" -> player.previous()
+                        else -> false
+                    }
+                }
             }
-            delay(CONTROL_REFRESH_MS)
-            val (result, _) = withContext(Dispatchers.IO) { pollOnce() }
-            dispatch(Action.Polled(result, SystemClock.elapsedRealtime(), viaJavbots = javbots.isConfigured))
+            if (!ok) return@launch controlFailed(failedMessage(via))
+            refreshSoon()
         }
+    }
+
+    private fun sendSeek(positionMs: Long) {
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) { player.seek(positionMs) }
+            if (!ok) return@launch controlFailed(R.string.control_failed_api)
+            refreshSoon()
+        }
+    }
+
+    /** Con sesión, el volumen exacto por la API; si no, Javbots lo sube o baja de 10 en 10 hasta acercarse. */
+    private fun sendVolume(volume: Float, from: Float?) {
+        val via = state.controlVia ?: return
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                if (canUseApi) {
+                    player.volume(volume)
+                } else if (via == ControlVia.JAVBOTS && from != null) {
+                    val steps = Math.round((volume - from) / JAVBOTS_VOLUME_STEP)
+                    val command = if (steps > 0) "volumeUp" else "volumeDown"
+                    (0 until kotlin.math.abs(steps)).all { javbots.control(command) }
+                } else {
+                    false
+                }
+            }
+            if (!ok) return@launch controlFailed(failedMessage(via))
+            refreshSoon()
+        }
+    }
+
+    private fun failedMessage(via: ControlVia) =
+        if (via == ControlVia.SPOTIFY || canUseApi) R.string.control_failed_api else R.string.control_failed
+
+    /** No llegó: se avisa y se ve lo que de verdad suena. */
+    private fun controlFailed(message: Int) {
+        toast(context.getString(message))
+        dispatch(Action.ControlFailed)
+        scope.launch { refreshSoon() }
+    }
+
+    private suspend fun refreshSoon() {
+        delay(CONTROL_REFRESH_MS)
+        val (result, _) = withContext(Dispatchers.IO) { pollOnce() }
+        dispatch(Action.Polled(result, SystemClock.elapsedRealtime(), viaJavbots = javbots.isConfigured))
     }
 
     private fun hideImage() {
@@ -643,11 +799,29 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         }
     }
 
-    private fun renderHeader(s: ScreenState) {
+    /** Título y artista. Con canción nueva, los de antes salen hacia la izquierda y entran los nuevos. */
+    private fun renderHeader(old: ScreenState?, s: ScreenState) {
         val t = s.track ?: return
-        title.text = t.title
-        artist.text = t.artists.joinToString(", ")
-        renderTrackState(s)
+        val text = title.parent as View
+        val put = {
+            val now = state.track
+            title.text = now?.title ?: t.title
+            artist.text = (now ?: t).artists.joinToString(", ")
+            renderTrackState(state)
+        }
+        val oldTrack = old?.track
+        if (oldTrack == null || oldTrack.id == t.id || header.visibility != View.VISIBLE) {
+            // A media animación, el texto nuevo lo pone el final de la animación.
+            if (text.translationX == 0f) put()
+            return
+        }
+        text.animate().cancel()
+        text.animate().alpha(0f).translationX(-dp(24).toFloat()).setDuration(180).setInterpolator(AccelerateInterpolator())
+            .withEndAction {
+                put()
+                text.translationX = dp(32).toFloat()
+                text.animate().alpha(1f).translationX(0f).setDuration(420).setInterpolator(DecelerateInterpolator(2f)).start()
+            }.start()
     }
 
     /** A la derecha del título: "En pausa", o la batería si queda poca. */
@@ -661,20 +835,122 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         }
     }
 
-    private fun renderControls(s: ScreenState) {
-        val shown = if (s.showControls) View.VISIBLE else View.GONE
-        if (controls.visibility != shown) {
-            controls.visibility = shown
-            // Ocultos no vuelven a acomodarse solos: la letra recupera su espacio aquí.
+    private fun renderControls(old: ScreenState?, s: ScreenState) {
+        if (!s.showControls) {
+            if (controls.visibility != View.GONE) {
+                pillUp = false
+                controls.animate().cancel()
+                controls.visibility = View.GONE
+                controls.post {
+                    layoutLyricsArea()
+                    layoutIdleClock(state)
+                }
+            }
+            return
+        }
+        if (controls.visibility == View.GONE) {
+            // Invisible primero: así se mide y el reloj de pausa le hace lugar; luego sube con su animación.
+            controls.visibility = View.INVISIBLE
+            controls.alpha = 0f
             controls.post {
                 layoutLyricsArea()
                 layoutIdleClock(state)
             }
         }
-        playPause.setImageResource(if (s.track?.isPlaying == true) R.drawable.ic_pause else R.drawable.ic_play)
+        // Play ↔ pausa: el ícono se transforma (la primera vez se pone tal cual).
+        val playing = s.track?.isPlaying == true
+        val wasPlaying = old?.track?.isPlaying
+        if (old?.showControls == true && wasPlaying != null && wasPlaying != playing) {
+            val avd = context.getDrawable(if (playing) R.drawable.avd_play_to_pause else R.drawable.avd_pause_to_play)
+            playPause.setImageDrawable(avd)
+            (avd as? AnimatedVectorDrawable)?.start()
+        } else if (wasPlaying != playing || old.showControls != true) {
+            playPause.setImageResource(if (playing) R.drawable.vd_pause else R.drawable.vd_play)
+        }
         val v = s.track?.volume
-        volume.visibility = if (v == null) View.GONE else View.VISIBLE
-        if (v != null) volume.text = context.getString(R.string.volume_percent, (v * 100).toInt())
+        val volumeShown = if (v == null) View.GONE else View.VISIBLE
+        volumeIcon.visibility = volumeShown
+        volumeBar.visibility = volumeShown
+        if (v != null && !dragging) {
+            animateBar(volumeBar, (v * volumeBar.max).toInt())
+            volumeIcon.setImageResource(if (v == 0f) R.drawable.ic_volume_off else R.drawable.ic_volume_up)
+        }
+        updatePill(SystemClock.elapsedRealtime())
+    }
+
+    /** La barra llega a su valor deslizándose (el volumen), no de golpe. */
+    private fun animateBar(bar: SeekBar, value: Int) {
+        if (bar.progress == value) return
+        ObjectAnimator.ofInt(bar, "progress", value).apply {
+            duration = 300
+            interpolator = DecelerateInterpolator()
+        }.start()
+    }
+
+    /** Lo que va de la canción en la barra y los tiempos, salvo mientras se arrastra. */
+    private fun renderProgress(now: Long) {
+        val t = state.track ?: return
+        if (dragging || controls.visibility != View.VISIBLE || t.durationMs <= 0) return
+        val pos = t.positionAt(now)
+        progressBar.progress = (pos * progressBar.max / t.durationMs).toInt()
+        elapsed.text = clockText(pos)
+        total.text = clockText(t.durationMs)
+    }
+
+    private fun clockText(ms: Long): String {
+        val sec = (ms / 1000).coerceAtLeast(0)
+        return "%d:%02d".format(sec / 60, sec % 60)
+    }
+
+    /** Alguien tocó: los controles se quedan un rato. */
+    private fun poke() {
+        pokedAt = SystemClock.elapsedRealtime()
+        updatePill(pokedAt)
+    }
+
+    /**
+     * La píldora se ve en pausa, en el reloj de pausa, mientras se arrastra una barra y un rato después de tocar la
+     * pantalla. Sonando y sin tocar nada, se esconde: que se luzca la letra.
+     */
+    private fun updatePill(now: Long) {
+        val s = state
+        val want = s.showControls && controls.visibility != View.GONE &&
+            (dragging || !s.showingLyrics || s.track?.isPlaying != true || now - pokedAt < PILL_HIDE_MS)
+        if (want == pillUp) return
+        pillUp = want
+        controls.animate().cancel()
+        // El renglón que se canta se acomoda arriba de la píldora (o regresa al centro).
+        if (s.showingLyrics && s.lyrics is Lyrics.Synced && s.currentLine >= 0 && !recentlyTouched(now)) scrollToLine(s.currentLine)
+        if (want) {
+            if (controls.visibility != View.VISIBLE) {
+                controls.translationY = pillY + dp(PILL_DROP_DP)
+                controls.scaleX = 0.94f
+                controls.scaleY = 0.94f
+                controls.visibility = View.VISIBLE
+                renderProgress(now)
+            }
+            controls.animate().alpha(1f).translationY(pillY).scaleX(1f).scaleY(1f).setDuration(420)
+                .setInterpolator(OvershootInterpolator(1.2f)).withLayer().start()
+            credit.animate().translationY(creditY(true)).setDuration(420).setInterpolator(DecelerateInterpolator(2f)).start()
+        } else {
+            controls.animate().alpha(0f).translationY(pillY + dp(PILL_DROP_DP)).scaleX(0.94f).scaleY(0.94f).setDuration(280)
+                .setInterpolator(AccelerateInterpolator(1.5f)).withLayer()
+                .withEndAction { if (!pillUp) controls.visibility = View.INVISIBLE }.start()
+            credit.animate().translationY(creditY(false)).setDuration(400).setInterpolator(DecelerateInterpolator(2f)).start()
+        }
+    }
+
+    /** Se hunde al tocarlo y rebota al soltar. */
+    private fun bouncy(v: View) {
+        v.setOnTouchListener { b, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN ->
+                    b.animate().scaleX(0.84f).scaleY(0.84f).setDuration(90).setInterpolator(DecelerateInterpolator()).start()
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                    b.animate().scaleX(1f).scaleY(1f).setDuration(420).setInterpolator(OvershootInterpolator(4f)).start()
+            }
+            false
+        }
     }
 
     /** Batería en el reloj: la pila con su nivel y, abajo del número, si carga o si queda poca. */
@@ -692,7 +968,10 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         battery.show(b, label?.let(context::getString).orEmpty())
     }
 
-    private fun renderLyrics(s: ScreenState) {
+    /** Cómo aparece la letra: NEW (otra canción, o ya llegó) sube desvaneciéndose; SWAP (traducción, giro) solo se funde. */
+    private enum class Entrance { NEW, SWAP }
+
+    private fun renderLyrics(s: ScreenState, entrance: Entrance) {
         when (val l = s.lyrics) {
             null -> renderMessage(context.getString(if (s.lyricsFailed) R.string.network_error else R.string.searching))
             is Lyrics.Synced -> renderLines(l.lines.map { it.text }, s.translatedLines, synced = true)
@@ -704,7 +983,18 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             highlight(s.currentLine)
             // Recién dibujada (p. ej. al cambiar a la traducción), el renglón actual va al centro aunque se haya
             // tocado la letra hace poco; con las medidas ya hechas.
-            lyricsScroll.post { if (state.lyrics is Lyrics.Synced && state.currentLine >= 0) scrollToLine(state.currentLine) }
+            lyricsScroll.post { if (state.lyrics is Lyrics.Synced && state.currentLine >= 0) scrollToLine(state.currentLine, animate = false) }
+        }
+        lyricsScroll.animate().cancel()
+        if (entrance == Entrance.NEW) {
+            lyricsScroll.alpha = 0f
+            lyricsScroll.translationY = dp(28).toFloat()
+            lyricsScroll.animate().alpha(1f).translationY(0f).setDuration(550).setInterpolator(DecelerateInterpolator(2f))
+                .withLayer().start()
+        } else {
+            lyricsScroll.alpha = 0.2f
+            lyricsScroll.translationY = 0f
+            lyricsScroll.animate().alpha(1f).setDuration(300).withLayer().start()
         }
     }
 
@@ -743,6 +1033,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private fun rowView(texts: List<String>, color: Int, sizeSp: Float) = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         pivotX = 0f
+        // El color que tiene ahora (para pasar al siguiente poco a poco).
+        tag = color
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         texts.forEachIndexed { i, text ->
             addView(TextView(context).apply {
@@ -772,17 +1064,46 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
                 i < index -> past
                 else -> future
             }
-            for (j in 0 until row.childCount) (row.getChildAt(j) as TextView).setTextColor(c)
-            val scale = if (i == index) 1.05f else 1f
-            if (row.scaleX != scale) row.animate().scaleX(scale).scaleY(scale).setDuration(200).start()
+            val from = row.tag as? Int
+            if (from != c) {
+                row.tag = c
+                // Los renglones cerca del que se canta cambian de color poco a poco; los lejanos (al adelantar), de golpe.
+                if (from != null && kotlin.math.abs(i - index) <= 2) {
+                    ValueAnimator.ofObject(ArgbEvaluator(), from, c).apply {
+                        duration = 450
+                        addUpdateListener { a -> paintRow(row, a.animatedValue as Int) }
+                    }.start()
+                } else {
+                    paintRow(row, c)
+                }
+            }
+            val scale = if (i == index) 1.06f else 1f
+            if (row.scaleX != scale) {
+                row.animate().scaleX(scale).scaleY(scale).setDuration(450).setInterpolator(DecelerateInterpolator(1.5f)).start()
+            }
         }
         if (!recentlyTouched(SystemClock.elapsedRealtime())) scrollToLine(index.coerceAtLeast(0))
     }
 
-    /** Centra el renglón en el espacio de la letra. */
-    private fun scrollToLine(index: Int) {
+    private fun paintRow(row: ViewGroup, color: Int) {
+        for (j in 0 until row.childCount) (row.getChildAt(j) as TextView).setTextColor(color)
+    }
+
+    /** Centra el renglón en el espacio de la letra: arranca y frena suave (o de una vez, si [animate] es false). */
+    private fun scrollToLine(index: Int, animate: Boolean = true) {
         val line = lyricsContainer.getChildAt(index) ?: return
-        lyricsScroll.smoothScrollTo(0, line.top + line.height / 2 - lyricsScroll.height / 2)
+        val max = (lyricsContainer.height - lyricsScroll.height).coerceAtLeast(0)
+        // Con la píldora arriba, el centro es el del pedazo de letra que queda libre encima de ella.
+        val covered = if (pillUp) controls.height + dp(6) else 0
+        val to = (line.top + line.height / 2 - (lyricsScroll.height - covered) / 2).coerceIn(0, max)
+        scrollAnim?.cancel()
+        if (!animate) return lyricsScroll.scrollTo(0, to)
+        if (to == lyricsScroll.scrollY) return
+        scrollAnim = ObjectAnimator.ofInt(lyricsScroll, "scrollY", to).apply {
+            duration = 750
+            interpolator = PathInterpolator(0.3f, 0f, 0.1f, 1f)
+            start()
+        }
     }
 
     /**
@@ -799,13 +1120,25 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         }
         val half = lyricsScroll.height / 2
         lyricsContainer.setPadding(lyricsContainer.paddingLeft, half, lyricsContainer.paddingRight, half)
-        // Crédito del arte y controles, uno arriba del otro, encima de los perros.
-        controls.translationY = -dogs.height.toFloat()
-        credit.translationY = -bottom.toFloat()
-        floor.layoutParams = floor.layoutParams.apply { height = bottom + dp(24) }
+        // La píldora flota encima de los perros (sobre la letra); el crédito del arte, arriba de su lugar.
+        val y = -dogs.height.toFloat()
+        if (y != pillY) {
+            pillY = y
+            // Si ya iba subiendo (los perros aún no medían nada), que termine en su lugar nuevo.
+            if (pillUp) controls.animate().translationY(pillY).setDuration(250).start()
+            else controls.translationY = pillY + dp(PILL_DROP_DP)
+        }
+        credit.animate().cancel()
+        credit.translationY = creditY(pillUp)
+        floor.layoutParams = floor.layoutParams.apply { height = bottomAreaHeight(withControls = true) + dp(24) }
     }
 
-    private fun bottomAreaHeight() = dogs.height + (if (controls.visibility == View.VISIBLE) controls.height else 0)
+    /** El crédito del arte va arriba de los perros, y de la píldora mientras se ve. */
+    private fun creditY(pillShown: Boolean) = -bottomAreaHeight(withControls = pillShown).toFloat()
+
+    /** Lo de abajo: los perros y, si [withControls] y hay controles, también la píldora (con su margen). */
+    private fun bottomAreaHeight(withControls: Boolean = false) =
+        dogs.height + (if (withControls && state.showControls && controls.visibility != View.GONE) controls.height + dp(6) else 0)
 
     /** Sobre el cielo, reloj grande al centro; sobre imágenes, chico en la esquina para que se vean. */
     private fun layoutIdleClock(s: ScreenState) {
@@ -813,7 +1146,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         idle.gravity = if (small) Gravity.BOTTOM or Gravity.START else Gravity.CENTER
         // Horizontal con los controles de la música abajo: el reloj un poco más chico para que quepa la tarjeta.
         // (Con el cielo: el reloj puede estar oculto todavía y medir 0.)
-        val tight = !small && controls.visibility == View.VISIBLE && sky.width > sky.height
+        val withControls = s.showControls && controls.visibility != View.GONE
+        val tight = !small && withControls && sky.width > sky.height
         clock.sizeSp = if (small) 56f else if (tight) 72f else 96f
         clock.alignStart = small
         (dato.layoutParams as android.widget.FrameLayout.LayoutParams).gravity =
@@ -821,8 +1155,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         dato.requestLayout()
         // En pausa siguen los controles de la música abajo: el reloj, la tarjeta y el clima se acomodan arriba de ellos.
         val bottom = when {
-            small -> bottomAreaHeight() + dp(36)
-            controls.visibility == View.VISIBLE -> bottomAreaHeight() + dp(8)
+            small -> bottomAreaHeight(withControls = true) + dp(36)
+            withControls -> bottomAreaHeight(withControls = true) + dp(8)
             else -> dp(32)
         }
         idle.setPadding(dp(32), dp(32), dp(32), bottom)
@@ -1122,5 +1456,12 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         const val TOUCH_PAUSE_MS = 5_000L
         /** Tras un botón, cuánto esperar para preguntar de nuevo y ver el cambio. */
         const val CONTROL_REFRESH_MS = 500L
+        /** Sonando, los controles se esconden tras este rato sin tocar la pantalla. */
+        const val PILL_HIDE_MS = 6_000L
+        /** Cuánto baja la píldora al esconderse. */
+        const val PILL_DROP_DP = 28
+        const val PILL_MAX_DP = 640
+        /** Javbots sube o baja el volumen de 10 en 10 (javbots-musica.js, VOLUME_STEP). */
+        const val JAVBOTS_VOLUME_STEP = 0.1f
     }
 }

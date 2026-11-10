@@ -46,8 +46,13 @@ data class ScreenState(
     /** La búsqueda en LRCLIB falló por la red: se reintenta con la siguiente consulta. */
     val lyricsFailed: Boolean = false,
     val coverUrl: String? = null,
-    /** La fuente acepta botones (Javbots): anterior, pausa, siguiente y volumen. */
-    val canControl: Boolean = false,
+    /** A quién mandarle los botones (Javbots o la API de Spotify); null = la fuente no los acepta. */
+    val controlVia: ControlVia? = null,
+    /**
+     * Hasta cuándo se respeta lo que se tocó (play/pausa, adelantar, volumen) aunque la consulta todavía traiga lo
+     * de antes: Spotify tarda en reflejarlo y si no, el botón brincaría de regreso.
+     */
+    val holdUntil: Long = 0,
     /** Desde cuándo está en pausa (para pasar al reloj si sigue así). */
     val pausedSince: Long? = null,
     /** Renglón que se canta (letra sincronizada), -1 antes del primero. */
@@ -83,6 +88,8 @@ data class ScreenState(
     val showTranslation: Boolean = false,
 ) {
     val showingLyrics get() = waiting == null
+
+    val canControl get() = controlVia != null
 
     /** Los renglones traducidos, alineados con la letra, cuando los hay (y la canción no está ya en ese idioma). */
     val translatedLines: List<String>? get() = translation?.lines
@@ -125,6 +132,8 @@ data class ScreenState(
         const val PAUSE_TO_IDLE_MS = 20_000L
         /** Sin música, cada cuánto cambia la imagen (marco de fotos). */
         const val IDLE_IMAGE_MS = 2 * 60_000L
+        /** Cuánto se sostiene lo que se tocó mientras Spotify lo refleja. */
+        const val HOLD_MS = 3_000L
         /** Adelanto del resaltado: la posición reportada llega con algo de retraso. */
         const val LEAD_MS = 250L
         val IMAGE_EVERY_OPTIONS = listOf(0, 5, 15, 60)
@@ -183,8 +192,14 @@ sealed interface Action {
     data object ToggleQuiet : Action
     /** Al arrancar: si hay carpeta de fondos para dormir. */
     data class SleepFolderFound(val folder: String?) : Action
-    /** Un botón de la música: previous, togglePlay, next, volumeUp, volumeDown. */
-    data class Control(val command: String) : Action
+    /** Un botón de la música: previous, togglePlay, next. Play/pausa cambia en seguida (sin esperar a Spotify). */
+    data class Control(val command: String, val now: Long = 0) : Action
+    /** Se soltó la barra de la canción en [positionMs]. */
+    data class Seek(val positionMs: Long, val now: Long) : Action
+    /** Se soltó la barra del volumen en [volume] (0..1). */
+    data class SetVolume(val volume: Float, val now: Long) : Action
+    /** El botón no llegó: deja de sostener lo que se tocó y se ve lo que de verdad suena. */
+    data object ControlFailed : Action
 }
 
 sealed interface Effect {
@@ -200,6 +215,9 @@ sealed interface Effect {
     /** Ya hay letra: Hunter y Tango lo festejan. */
     data object Celebrate : Effect
     data class SendControl(val command: String) : Effect
+    data class SendSeek(val positionMs: Long) : Effect
+    /** [from]: el volumen de antes (Javbots solo sube o baja de a poco). */
+    data class SendVolume(val volume: Float, val from: Float?) : Effect
     /** Guardar fondo, ajuste de imagen, cada cuánto y velo. */
     data object SavePrefs : Effect
     /** Avisar en un mensajito qué fondo quedó. */
@@ -240,7 +258,7 @@ private fun reduceAction(s: ScreenState, action: Action): Result = when (action)
     is Action.Tick -> tick(if (action.night != null) s.copy(night = action.night) else s, action.now)
     is Action.BatteryChanged -> Result(s.copy(battery = action.battery))
     is Action.DatosChanged -> datosChanged(s, action)
-    is Action.NeedsSetup -> Result(s.copy(waiting = action.waiting, track = null, canControl = false))
+    is Action.NeedsSetup -> Result(s.copy(waiting = action.waiting, track = null, controlVia = null))
     is Action.BackgroundChosen -> Result(
         s.copy(folder = action.folder, lastImageAt = action.now),
         listOf(if (action.folder == null) Effect.HideImage else Effect.NextImage, Effect.SavePrefs, Effect.AnnounceBackground),
@@ -255,7 +273,31 @@ private fun reduceAction(s: ScreenState, action: Action): Result = when (action)
     Action.CycleScrim -> Result(s.copy(scrimLevel = (s.scrimLevel + 1) % ScreenState.SCRIM_LEVELS), listOf(Effect.SavePrefs))
     Action.ToggleQuiet -> Result(s.copy(quietEnabled = !s.quietEnabled), listOf(Effect.SavePrefs))
     is Action.SleepFolderFound -> Result(s.copy(sleepFolder = action.folder))
-    is Action.Control -> Result(s, listOf(Effect.SendControl(action.command)))
+    is Action.Control -> control(s, action)
+    is Action.Seek -> {
+        val t = s.track
+        if (t == null || !s.canControl) Result(s)
+        else {
+            val pos = action.positionMs.coerceIn(0, t.durationMs)
+            // El renglón se recalcula con el siguiente tick; la letra salta en seguida.
+            Result(
+                s.copy(track = t.copy(progressMs = pos, sampledAt = action.now), holdUntil = action.now + ScreenState.HOLD_MS),
+                listOf(Effect.SendSeek(pos)),
+            )
+        }
+    }
+    is Action.SetVolume -> {
+        val t = s.track
+        if (t == null || !s.canControl) Result(s)
+        else {
+            val v = action.volume.coerceIn(0f, 1f)
+            Result(
+                s.copy(track = t.copy(volume = v), holdUntil = action.now + ScreenState.HOLD_MS),
+                listOf(Effect.SendVolume(v, t.volume)),
+            )
+        }
+    }
+    Action.ControlFailed -> Result(s.copy(holdUntil = 0))
 }
 
 private fun polled(s: ScreenState, a: Action.Polled): Result = when (val r = a.result) {
@@ -264,10 +306,10 @@ private fun polled(s: ScreenState, a: Action.Polled): Result = when (val r = a.r
         s.copy(
             waiting = if (r.notASong) Waiting.NotASong else Waiting.NothingPlaying,
             track = null, lyricsForId = null, lyrics = null, lyricsFailed = false, pausedSince = null,
-            canControl = false, currentLine = -1,
+            controlVia = null, currentLine = -1,
         )
     )
-    PollResult.NeedsLogin -> Result(s.copy(waiting = Waiting.Login(), track = null, canControl = false))
+    PollResult.NeedsLogin -> Result(s.copy(waiting = Waiting.Login(), track = null, controlVia = null))
     is PollResult.RateLimited -> Result(s)
     // Con una canción en pantalla se sigue interpolando; solo se avisa si no hay nada.
     PollResult.NetworkError ->
@@ -276,9 +318,14 @@ private fun polled(s: ScreenState, a: Action.Polled): Result = when (val r = a.r
 }
 
 private fun playing(s: ScreenState, r: PollResult.Playing, now: Long): Result {
-    val t = r.track
     val effects = mutableListOf<Effect>()
-    var next = s.copy(track = t, canControl = r.sourceHandlesLyrics)
+    // Lo que se acaba de tocar manda un rato sobre lo que trae la consulta (misma canción).
+    val held = s.track?.takeIf { now < s.holdUntil && it.id == r.track.id }
+    val t = if (held == null) r.track else r.track.copy(
+        isPlaying = held.isPlaying, progressMs = held.progressMs, sampledAt = held.sampledAt,
+        volume = held.volume ?: r.track.volume,
+    )
+    var next = s.copy(track = t, controlVia = r.controlVia, holdUntil = if (held == null) 0 else s.holdUntil)
 
     if (t.id != s.lyricsForId) {
         // Canción nueva: se busca su letra y, si el fondo cambia con cada canción, otra imagen.
@@ -317,6 +364,22 @@ private fun playing(s: ScreenState, r: PollResult.Playing, now: Long): Result {
         waiting = if (pausedLong) Waiting.Paused(t.title, t.artists.joinToString(", ")) else null,
     )
     return Result(next, effects)
+}
+
+/** Play/pausa se ve en seguida: la posición se congela (o arranca) donde va. */
+private fun control(s: ScreenState, a: Action.Control): Result {
+    val t = s.track
+    if (t == null || !s.canControl) return Result(s)
+    if (a.command != "togglePlay") return Result(s, listOf(Effect.SendControl(a.command)))
+    val playing = !t.isPlaying
+    var next = s.copy(
+        track = t.copy(isPlaying = playing, progressMs = t.positionAt(a.now), sampledAt = a.now),
+        holdUntil = a.now + ScreenState.HOLD_MS,
+    )
+    // Al darle play desde el reloj de pausa: regresa la letra de una vez.
+    if (playing) next = next.copy(pausedSince = null, waiting = if (next.waiting is Waiting.Paused) null else next.waiting)
+    else next = next.copy(pausedSince = a.now)
+    return Result(next, listOf(Effect.SendControl(a.command)))
 }
 
 private fun lyricsLoaded(s: ScreenState, a: Action.LyricsLoaded): Result {

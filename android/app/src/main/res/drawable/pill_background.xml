@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Píldora de los controles: vidrio oscuro con un filo de luz arriba; se lee sobre cualquier fondo. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="28dp" />
+            <gradient
+                android:angle="270"
+                android:endColor="#D90A0A0F"
+                android:startColor="#B31E1E28" />
+            <stroke
+                android:width="1dp"
+                android:color="#2EFFFFFF" />
+        </shape>
+    </item>
+</layer-list>

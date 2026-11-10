@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ícono de pause del botón blanco (oscuro). Mismos puntos que el otro para transformarse (avd_*). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <group android:name="g" android:pivotX="12" android:pivotY="12">
+        <path
+            android:name="shape"
+            android:fillColor="#FF14141A"
+            android:pathData="M6,5 L6,19 L10,19 L10,5 Z M14,5 L14,19 L18,19 L18,5 Z" />
+    </group>
+</vector>

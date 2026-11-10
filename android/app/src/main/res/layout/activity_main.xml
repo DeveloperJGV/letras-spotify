@@ -306,61 +306,96 @@
             android:visibility="gone" />
     </LinearLayout>
 
-    <!-- Controles de Spotify en la PC (por Javbots), arriba de los perros. -->
+    <!-- Controles de la música: una píldora flotante arriba de los perros (por Javbots o la API de Spotify).
+         Sonando, se esconde sola y vuelve al tocar la pantalla; el ancho lo pone Pantalla.kt. -->
     <LinearLayout
         android:id="@+id/controls"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:gravity="center"
-        android:orientation="horizontal"
-        android:paddingTop="6dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="6dp"
+        android:background="@drawable/pill_background"
+        android:elevation="8dp"
+        android:orientation="vertical"
+        android:paddingStart="14dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="18dp"
+        android:paddingBottom="8dp"
         android:visibility="gone">
 
-        <ImageButton
-            android:id="@+id/btnPrevious"
-            style="@style/RoundButton"
-            android:contentDescription="@string/previous"
-            android:src="@drawable/ic_previous" />
-        <ImageButton
-            android:id="@+id/playPause"
-            style="@style/RoundButton"
-            android:contentDescription="@string/play_pause"
-            android:src="@drawable/ic_pause"
-            android:layout_width="56dp"
-            android:layout_height="56dp" />
-        <ImageButton
-            android:id="@+id/btnNext"
-            style="@style/RoundButton"
-            android:contentDescription="@string/next"
-            android:src="@drawable/ic_next" />
-
-        <View
-            android:layout_width="24dp"
-            android:layout_height="1dp" />
-
-        <ImageButton
-            android:id="@+id/btnVolumeDown"
-            style="@style/RoundButton"
-            android:contentDescription="@string/volume_down"
-            android:src="@drawable/ic_volume_down" />
-
-        <TextView
-            android:id="@+id/volume"
-            android:layout_width="48dp"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center"
-            android:shadowColor="#CC000000"
-            android:shadowRadius="4"
-            android:textColor="@color/text_primary"
-            android:textSize="13sp"
-            android:visibility="gone" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <ImageButton
-            android:id="@+id/btnVolumeUp"
-            style="@style/RoundButton"
-            android:contentDescription="@string/volume_up"
-            android:src="@drawable/ic_volume_up" />
+            <ImageButton
+                android:id="@+id/btnPrevious"
+                style="@style/PillButton"
+                android:contentDescription="@string/previous"
+                android:src="@drawable/ic_previous" />
+            <ImageButton
+                android:id="@+id/playPause"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:layout_marginStart="6dp"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/play_button"
+                android:contentDescription="@string/play_pause"
+                android:elevation="4dp"
+                android:padding="13dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/vd_pause" />
+            <ImageButton
+                android:id="@+id/btnNext"
+                style="@style/PillButton"
+                android:contentDescription="@string/next"
+                android:src="@drawable/ic_next" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1"
+                android:minWidth="12dp" />
+
+            <!-- Tocar la bocina: silencio (y otra vez, de regreso). -->
+            <ImageButton
+                android:id="@+id/volumeIcon"
+                style="@style/PillButton"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:padding="8dp"
+                android:alpha="0.8"
+                android:contentDescription="@string/mute"
+                android:src="@drawable/ic_volume_up" />
+            <SeekBar
+                android:id="@+id/volumeBar"
+                style="@style/PillSeek"
+                android:layout_width="120dp"
+                android:max="100" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/elapsed"
+                style="@style/PillTime"
+                android:gravity="end" />
+            <SeekBar
+                android:id="@+id/progressBar"
+                style="@style/PillSeek"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:max="1000" />
+            <TextView
+                android:id="@+id/total"
+                style="@style/PillTime"
+                android:gravity="start" />
+        </LinearLayout>
     </LinearLayout>
 
     <dev.jgv.letras.DogsView

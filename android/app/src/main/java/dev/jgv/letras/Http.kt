@@ -36,6 +36,10 @@ object Http {
     fun putJson(url: String, json: String, headers: Map<String, String> = emptyMap()): Response =
         request(url, "PUT", headers, body = json.toByteArray() to "application/json")
 
+    /** Sin cuerpo (PUT o POST vacíos, como los botones de Spotify). */
+    fun send(method: String, url: String, headers: Map<String, String> = emptyMap()): Response =
+        request(url, method, headers, body = ByteArray(0) to "application/json")
+
     fun bytes(url: String, headers: Map<String, String> = emptyMap()): ByteArray? {
         val c = open(url)
         headers.forEach { (k, v) -> c.setRequestProperty(k, v) }
