@@ -368,11 +368,13 @@
                 android:alpha="0.8"
                 android:contentDescription="@string/mute"
                 android:src="@drawable/ic_volume_up" />
-            <SeekBar
-                android:id="@+id/volumeBar"
-                style="@style/PillSeek"
-                android:layout_width="120dp"
-                android:max="100" />
+            <!-- El volumen: el cuarto de Hunter y Tango con una lupa de vidrio que se arrastra (VolumeCapsule.kt). -->
+            <dev.jgv.letras.VolumeCapsule
+                android:id="@+id/volumeCapsule"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:contentDescription="@string/volume" />
         </LinearLayout>
 
         <LinearLayout

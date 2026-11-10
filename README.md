@@ -45,6 +45,12 @@ son de sus autores.
 - **Botones siempre a la vista** arriba a la derecha: ayuda (?), cambiar fondo y opciones.
 - **Controles de la música** en una píldora flotante arriba de los perros: anterior, play/pausa, siguiente,
   volumen (tocar la bocina lo silencia) y la barra de la canción (arrastrarla adelanta o regresa).
+  - **El volumen es el cuarto de Hunter y Tango:** una cápsula con su cuartito en pixel art, y lo que se arrastra es
+    una lupa de vidrio que agranda lo que pasa por debajo. En silencio duermen, bajito se echan a escuchar, a medio
+    volumen mueven la cabeza y fuerte hacen fiesta. De noche el cuarto se oscurece, se ven las estrellas por la
+    ventana y se prende la lámpara.
+
+    ![El volumen de día y de noche](docs/capturas/volumen-cuarto.png)
   - Van por Javbots (Spotify de la PC) o por la API de Spotify, al aparato donde esté sonando. Por la API piden
     Spotify Premium; adelantar y el volumen exacto necesitan la sesión de Spotify en la tablet.
   - Responden al instante: la pausa o el salto se ven en seguida, sin esperar a que Spotify conteste.
@@ -197,6 +203,7 @@ acciones ──► reduce(estado, acción) ──► estado nuevo + efectos
 | `JavbotsSource.kt`, `SpotifyPlayer.kt`, `Lyrics.kt` | De dónde sale la música y la letra. |
 | `Datos.kt`, `Clima.kt` | Las tarjetas de datos (Kotlin puro, con pruebas) y de dónde salen (clima, Wikipedia, tus frases). |
 | `SkyView`, `DogsView`, `ArtView`, `ClockView`, `BatteryView`, `WeatherView` | Vistas que se dibujan solas (cielo y luna, Hunter y Tango, imágenes, reloj, batería, clima). |
+| `VolumeCapsule` | El volumen: el cuarto de Hunter y Tango con la lupa de vidrio. |
 
 Pruebas (en la PC, sin tablet):
 
@@ -215,4 +222,6 @@ cd android
   `arte/meteocons/LICENSE`), partidos en capas con `arte/meteocons/split.py` y `render.mjs`.
 - Clima: [Open-Meteo](https://open-meteo.com) (CC BY 4.0). Efemérides: [Wikipedia en español](https://es.wikipedia.org) (CC BY-SA).
 - Fondos de artistas: de sus autores, con el crédito que se muestra en pantalla. No se incluyen en este repo.
+- El cuarto del volumen: hecho en [PixelLab](https://pixellab.ai) (de día, y la noche editando ese mismo),
+  originales en `arte/pixellab/cuarto/`.
 - Íconos de los botones: [Material Icons](https://fonts.google.com/icons) (Apache 2.0).

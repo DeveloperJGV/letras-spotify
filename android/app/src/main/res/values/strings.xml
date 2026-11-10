@@ -38,6 +38,7 @@
     <string name="next">Siguiente</string>
     <string name="play_pause">Reproducir o pausar</string>
     <string name="mute">Silencio</string>
+    <string name="volume">Volumen</string>
     <string name="seek_needs_login">Para adelantar la canción, conecta con Spotify en Opciones.</string>
     <string name="control_reconnect">Para usar los botones hay que volver a conectar con Spotify (Opciones → Reproducir en…).</string>
     <string name="control_failed_api">No llegó a Spotify. Los botones piden Spotify Premium y que la música suene en algún aparato.</string>

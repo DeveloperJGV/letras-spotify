@@ -111,7 +111,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private val controls: View = root.findViewById(R.id.controls)
     private val playPause: ImageButton = root.findViewById(R.id.playPause)
     private val volumeIcon: ImageButton = root.findViewById(R.id.volumeIcon)
-    private val volumeBar: SeekBar = root.findViewById(R.id.volumeBar)
+    private val volumeCapsule: VolumeCapsule = root.findViewById(R.id.volumeCapsule)
     private val progressBar: SeekBar = root.findViewById(R.id.progressBar)
     private val elapsed: TextView = root.findViewById(R.id.elapsed)
     private val total: TextView = root.findViewById(R.id.total)
@@ -223,21 +223,22 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
                 dispatch(Action.Seek(t.durationMs * bar.progress / bar.max, SystemClock.elapsedRealtime()))
             }
         })
-        volumeBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
-                if (fromUser) volumeIcon.setImageResource(if (progress == 0) R.drawable.ic_volume_off else R.drawable.ic_volume_up)
-            }
-
-            override fun onStartTrackingTouch(bar: SeekBar) {
+        volumeCapsule.listener = object : VolumeCapsule.Listener {
+            override fun onDragStart() {
                 dragging = true
+                poke()
             }
 
-            override fun onStopTrackingTouch(bar: SeekBar) {
+            override fun onDragging(volume: Float) {
+                volumeIcon.setImageResource(if (volume <= 0f) R.drawable.ic_volume_off else R.drawable.ic_volume_up)
+            }
+
+            override fun onDragEnd(volume: Float) {
                 dragging = false
                 poke()
-                dispatch(Action.SetVolume(bar.progress / bar.max.toFloat(), SystemClock.elapsedRealtime()))
+                dispatch(Action.SetVolume(volume, SystemClock.elapsedRealtime()))
             }
-        })
+        }
         // Todos los botones se hunden al tocarlos y rebotan al soltar.
         listOf(
             R.id.btnPrevious, R.id.playPause, R.id.btnNext, R.id.volumeIcon, R.id.btnHelp, R.id.btnBackground,
@@ -447,7 +448,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         val demo = NowPlaying(
             id = "demo", title = "De Música Ligera", artists = listOf("Soda Stereo"), album = "Canción Animal",
             durationMs = 212_000, progressMs = seconds * 1000L, isPlaying = !paused, coverUrl = null, sampledAt = now,
-            tempo = tempo,
+            tempo = tempo, volume = 0.6f,
         )
         // Con botones (como Javbots), para ver la píldora. En pausa, a los 20 s pasa al reloj con los controles abajo.
         dispatch(
@@ -536,6 +537,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         clock.night = darkness
         battery.night = darkness
         weatherView.night = darkness
+        volumeCapsule.night = darkness
         if (sky.forcedMoonPhase == null) {
             dogs.fullMoon = SkyView.illumination(SkyView.moonPhase(System.currentTimeMillis())) > FULL_MOON
         }
@@ -875,21 +877,12 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         val v = s.track?.volume
         val volumeShown = if (v == null) View.GONE else View.VISIBLE
         volumeIcon.visibility = volumeShown
-        volumeBar.visibility = volumeShown
+        volumeCapsule.visibility = volumeShown
         if (v != null && !dragging) {
-            animateBar(volumeBar, (v * volumeBar.max).toInt())
+            volumeCapsule.setVolume(v, animate = old?.track?.volume != null)
             volumeIcon.setImageResource(if (v == 0f) R.drawable.ic_volume_off else R.drawable.ic_volume_up)
         }
         updatePill(SystemClock.elapsedRealtime())
-    }
-
-    /** La barra llega a su valor deslizándose (el volumen), no de golpe. */
-    private fun animateBar(bar: SeekBar, value: Int) {
-        if (bar.progress == value) return
-        ObjectAnimator.ofInt(bar, "progress", value).apply {
-            duration = 300
-            interpolator = DecelerateInterpolator()
-        }.start()
     }
 
     /** Lo que va de la canción en la barra y los tiempos, salvo mientras se arrastra. */
