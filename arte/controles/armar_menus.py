@@ -23,7 +23,7 @@ from maquetas import P, nuevo  # noqa: E402
 
 DRAW = os.path.join(M.RES, "drawable-nodpi")
 CELDA = 36
-# En la app los objetos no llevan la miniatura de "Lofi" (es una foto de las carpetas de Javier): llevan el cielo.
+# En la app los objetos no llevan la miniatura de "Lofi" (es una foto de las carpetas de la persona): llevan el cielo.
 K.mini = lambda i, w, hh, n=0.0: M.mini(0 if i == 1 else i, w, hh, n)
 
 
@@ -146,7 +146,7 @@ def dibujos():
     for i in range(9):
         d = K.dibujo_seccion(i)
         if i == 3:
-            # las postales con el cielo y Hunter y Tango (no con la foto de Lofi, que es de Javier y cambia)
+            # las postales con el cielo y Hunter y Tango (no con la foto de Lofi, que es de la persona y cambia)
             a = M.postal(0, 0.0, True)
             b = M.postal(3, 0.0, False)
             d = Image.new("RGBA", (a.width + 70, a.height + 8), (0, 0, 0, 0))

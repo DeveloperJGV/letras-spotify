@@ -56,7 +56,7 @@ sealed interface PollResult {
 data class Sent(val code: Int, val reason: String = "") {
     val ok get() = code in 200..299
 
-    /** Qué decirle a Javier cuando no llegó, sin tecnicismos. */
+    /** Qué decirle a la persona cuando no llegó, sin tecnicismos. */
     enum class Problem { NO_NETWORK, NO_SESSION, PREMIUM, NO_DEVICE, NOT_ALLOWED, TOO_FAST, OFFICE_KEY, OFFICE_NO_SPOTIFY, OTHER }
 
     fun problem(via: ControlVia): Problem? = when {

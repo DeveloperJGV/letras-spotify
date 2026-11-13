@@ -106,7 +106,7 @@ class Clima(private val context: Context) {
         }
     }
 
-    /** Las cosas bonitas de Javier: Pictures/Letras/datos.txt (ver [Datos.parseNice]). Vacía si no existe. */
+    /** Las cosas bonitas de quien usa la tablet: Pictures/Letras/datos.txt (ver [Datos.parseNice]). Vacía si no existe. */
     fun nice(): List<Nice> {
         val file = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Letras/datos.txt")
         return try {
