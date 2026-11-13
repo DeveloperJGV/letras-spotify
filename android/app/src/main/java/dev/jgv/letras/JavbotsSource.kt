@@ -49,14 +49,15 @@ class JavbotsSource(context: Context) {
 
     /**
      * Botones de la tablet: previous, togglePlay, next, volumeUp, volumeDown. Javbots se los pasa a Spotify en la
-     * PC. false = no llegó (la PC no contesta, o Spotify no tiene la extensión conectada).
+     * PC. Regresa el código de la oficina (409 = Spotify no tiene la extensión conectada).
      */
-    fun control(action: String): Boolean {
-        val h = host ?: return false
+    fun control(action: String): Sent {
+        val h = host ?: return Sent(Sent.NO_SESSION)
         return try {
-            Http.postJson("http://$h:$PORT/api/music/control", "{\"action\":\"$action\"}", auth()).isSuccessful
+            val r = Http.postJson("http://$h:$PORT/api/music/control", "{\"action\":\"$action\"}", auth())
+            Sent(r.code, r.body.take(120))
         } catch (_: IOException) {
-            false
+            Sent(Sent.NO_NETWORK)
         }
     }
 

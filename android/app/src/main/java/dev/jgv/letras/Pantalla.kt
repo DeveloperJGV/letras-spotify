@@ -797,26 +797,29 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         if (via == ControlVia.SPOTIFY && auth.needsReconnect) return controlFailed(R.string.control_reconnect)
         val wantPlaying = state.track?.isPlaying == true
         scope.launch {
-            val ok = withContext(Dispatchers.IO) {
+            val sent = withContext(Dispatchers.IO) {
                 when (via) {
                     ControlVia.JAVBOTS -> javbots.control(command)
                     ControlVia.SPOTIFY -> when (command) {
                         "togglePlay" -> player.play(wantPlaying)
                         "next" -> player.next()
                         "previous" -> player.previous()
-                        else -> false
+                        else -> Sent(Sent.NO_SESSION)
                     }
                 }
             }
-            if (!ok) return@launch controlFailed(failedMessage(via))
+            val what = if (command == "togglePlay") if (wantPlaying) "play" else "pause" else command
+            logSent(via, what, sent)
+            if (!sent.ok) return@launch controlFailed(failedMessage(via, sent))
             refreshSoon()
         }
     }
 
     private fun sendSeek(positionMs: Long) {
         scope.launch {
-            val ok = withContext(Dispatchers.IO) { player.seek(positionMs) }
-            if (!ok) return@launch controlFailed(R.string.control_failed_api)
+            val sent = withContext(Dispatchers.IO) { player.seek(positionMs) }
+            logSent(ControlVia.SPOTIFY, "seek", sent)
+            if (!sent.ok) return@launch controlFailed(failedMessage(ControlVia.SPOTIFY, sent))
             refreshSoon()
         }
     }
@@ -825,24 +828,47 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private fun sendVolume(volume: Float, from: Float?) {
         val via = state.controlVia ?: return
         scope.launch {
-            val ok = withContext(Dispatchers.IO) {
+            val (sentVia, sent) = withContext(Dispatchers.IO) {
                 if (canUseApi) {
-                    player.volume(volume)
+                    ControlVia.SPOTIFY to player.volume(volume)
                 } else if (via == ControlVia.JAVBOTS && from != null) {
                     val steps = Math.round((volume - from) / JAVBOTS_VOLUME_STEP)
                     val command = if (steps > 0) "volumeUp" else "volumeDown"
-                    (0 until kotlin.math.abs(steps)).all { javbots.control(command) }
+                    var last = Sent(200)
+                    for (i in 0 until kotlin.math.abs(steps)) {
+                        last = javbots.control(command)
+                        if (!last.ok) break
+                    }
+                    ControlVia.JAVBOTS to last
                 } else {
-                    false
+                    via to Sent(Sent.NO_SESSION)
                 }
             }
-            if (!ok) return@launch controlFailed(failedMessage(via))
+            logSent(sentVia, "volume", sent)
+            if (!sent.ok) return@launch controlFailed(failedMessage(sentVia, sent))
             refreshSoon()
         }
     }
 
-    private fun failedMessage(via: ControlVia) =
-        if (via == ControlVia.SPOTIFY || canUseApi) R.string.control_failed_api else R.string.control_failed
+    /** Para revisar con `adb logcat -s Letras`: ruta, orden y respuesta (nunca tokens). */
+    private fun logSent(via: ControlVia, what: String, sent: Sent) {
+        android.util.Log.i("Letras", "control ${via.name.lowercase()} $what -> ${sent.code} ${sent.reason}")
+    }
+
+    /** El aviso dice lo que de verdad pasó, según quién contestó y qué contestó. */
+    private fun failedMessage(via: ControlVia, sent: Sent): Int = when (sent.problem(via)) {
+        Sent.Problem.NO_NETWORK ->
+            if (via == ControlVia.JAVBOTS) R.string.control_failed_office_offline else R.string.control_failed_network
+        Sent.Problem.NO_SESSION -> R.string.control_reconnect
+        Sent.Problem.PREMIUM -> R.string.control_failed_premium
+        Sent.Problem.NO_DEVICE -> R.string.control_failed_no_device
+        Sent.Problem.NOT_ALLOWED -> R.string.control_failed_not_allowed
+        Sent.Problem.TOO_FAST -> R.string.control_failed_too_fast
+        Sent.Problem.OFFICE_KEY -> R.string.control_failed_office_key
+        Sent.Problem.OFFICE_NO_SPOTIFY -> R.string.control_failed
+        Sent.Problem.OTHER, null ->
+            if (via == ControlVia.JAVBOTS) R.string.control_failed_office_other else R.string.control_failed_other
+    }
 
     /** No llegó: se avisa y se ve lo que de verdad suena. */
     private fun controlFailed(message: Int) {

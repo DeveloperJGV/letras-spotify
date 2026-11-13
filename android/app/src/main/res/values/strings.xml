@@ -41,7 +41,15 @@
     <string name="volume">Volumen</string>
     <string name="seek_needs_login">Para adelantar la canción, conecta con Spotify en Opciones.</string>
     <string name="control_reconnect">Para usar los botones hay que volver a conectar con Spotify (Opciones → Reproducir en…).</string>
-    <string name="control_failed_api">No llegó a Spotify. Los botones piden Spotify Premium y que la música suene en algún aparato.</string>
+    <string name="control_failed_premium">Spotify dice que esa cuenta no tiene Premium, y sin Premium no deja usar los botones.</string>
+    <string name="control_failed_no_device">No llegó: Spotify no encuentra ningún aparato sonando. Pon música en alguno y vuelve a intentar.</string>
+    <string name="control_failed_not_allowed">Spotify no dejó hacer eso con esta canción ahora mismo.</string>
+    <string name="control_failed_too_fast">Spotify pidió esperar un momento. Vuelve a intentar en unos segundos.</string>
+    <string name="control_failed_network">No llegó: la tablet no pudo hablar con Spotify. ¿Hay internet?</string>
+    <string name="control_failed_other">No llegó: Spotify contestó con un error. Vuelve a intentar.</string>
+    <string name="control_failed_office_offline">No llegó: la PC no contestó. ¿Está prendida y con Javbots abierto?</string>
+    <string name="control_failed_office_key">No llegó: la PC no reconoció a la tablet (la llave de música no coincide).</string>
+    <string name="control_failed_office_other">No llegó: la PC contestó con un error. Vuelve a intentar.</string>
     <string name="control_failed">No llegó a Spotify. ¿Está abierto en la PC con la extensión de Javbots?</string>
     <string name="exit">Salir</string>
     <string name="battery_percent">%1$d%%</string>

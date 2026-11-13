@@ -49,6 +49,47 @@ sealed interface PollResult {
     data object NetworkError : PollResult
 }
 
+/**
+ * Cómo le fue a una orden (un botón, la barra, el volumen): el código HTTP y, si Spotify lo dice, su motivo
+ * (`PREMIUM_REQUIRED`, `NO_ACTIVE_DEVICE`…). Códigos negativos: no salió de la tablet.
+ */
+data class Sent(val code: Int, val reason: String = "") {
+    val ok get() = code in 200..299
+
+    /** Qué decirle a Javier cuando no llegó, sin tecnicismos. */
+    enum class Problem { NO_NETWORK, NO_SESSION, PREMIUM, NO_DEVICE, NOT_ALLOWED, TOO_FAST, OFFICE_KEY, OFFICE_NO_SPOTIFY, OTHER }
+
+    fun problem(via: ControlVia): Problem? = when {
+        ok -> null
+        code == NO_NETWORK -> Problem.NO_NETWORK
+        via == ControlVia.JAVBOTS -> when (code) {
+            NO_SESSION, 401, 403 -> Problem.OFFICE_KEY
+            409 -> Problem.OFFICE_NO_SPOTIFY
+            else -> Problem.OTHER
+        }
+        code == NO_SESSION || code == 401 -> Problem.NO_SESSION
+        reason == "PREMIUM_REQUIRED" -> Problem.PREMIUM
+        code == 404 || reason == "NO_ACTIVE_DEVICE" -> Problem.NO_DEVICE
+        code == 403 -> Problem.NOT_ALLOWED
+        code == 429 -> Problem.TOO_FAST
+        else -> Problem.OTHER
+    }
+
+    companion object {
+        /** No hubo red o el servidor no contestó. */
+        const val NO_NETWORK = -1
+        /** No hay sesión (Spotify) o no hay a quién mandarlo (Javbots sin dirección). */
+        const val NO_SESSION = -2
+
+        /** El motivo que Spotify pone en `error.reason` (o, si no trae, su `error.message`). */
+        fun spotifyReason(body: String): String = try {
+            JSONObject(body).optJSONObject("error")?.let { e -> e.optString("reason").ifBlank { e.optString("message") } }.orEmpty()
+        } catch (_: org.json.JSONException) {
+            ""
+        }
+    }
+}
+
 /** Un aparato con Spotify abierto (Spotify Connect): la PC, una bocina, el celular… */
 data class Device(val id: String, val name: String, val type: String, val isActive: Boolean)
 
@@ -87,22 +128,31 @@ class SpotifyPlayer(private val auth: SpotifyAuth) {
      * Botones por la API (sirve para cualquier aparato, la PC incluida). Necesitan el permiso
      * user-modify-playback-state y Spotify Premium. false = no se pudo.
      */
-    fun play(playing: Boolean): Boolean = command("PUT", if (playing) "play" else "pause")
+    fun play(playing: Boolean): Sent = command("PUT", if (playing) "play" else "pause")
 
-    fun next(): Boolean = command("POST", "next")
+    fun next(): Sent = command("POST", "next")
 
-    fun previous(): Boolean = command("POST", "previous")
+    fun previous(): Sent = command("POST", "previous")
 
-    fun seek(positionMs: Long): Boolean = command("PUT", "seek?position_ms=${positionMs.coerceAtLeast(0)}")
+    fun seek(positionMs: Long): Sent = command("PUT", "seek?position_ms=${positionMs.coerceAtLeast(0)}")
 
-    fun volume(fraction: Float): Boolean =
+    fun volume(fraction: Float): Sent =
         command("PUT", "volume?volume_percent=${(fraction * 100).roundToInt().coerceIn(0, 100)}")
 
-    private fun command(method: String, path: String): Boolean = try {
+    private fun command(method: String, path: String, retryOn401: Boolean = true): Sent = try {
         val token = auth.token()
-        token != null && Http.send(method, "https://api.spotify.com/v1/me/player/$path", mapOf("Authorization" to "Bearer $token")).isSuccessful
+        if (token == null) Sent(Sent.NO_SESSION)
+        else {
+            val r = Http.send(method, "https://api.spotify.com/v1/me/player/$path", mapOf("Authorization" to "Bearer $token"))
+            if (r.code == 401 && retryOn401) {
+                auth.invalidate()
+                command(method, path, retryOn401 = false)
+            } else {
+                Sent(r.code, Sent.spotifyReason(r.body))
+            }
+        }
     } catch (_: IOException) {
-        false
+        Sent(Sent.NO_NETWORK)
     }
 
     fun poll(): PollResult = try {
