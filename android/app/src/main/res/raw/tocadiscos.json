@@ -1,0 +1,74 @@
+{
+ "tocadiscos_pared_dia": [
+  0,
+  0
+ ],
+ "tocadiscos_pared_noche": [
+  0,
+  0
+ ],
+ "tocadiscos_mueble": [
+  0,
+  0
+ ],
+ "tocadiscos_disco": [
+  74,
+  9
+ ],
+ "tocadiscos_etiqueta": [
+  90,
+  14
+ ],
+ "tocadiscos_brazo_abajo": [
+  108,
+  12
+ ],
+ "tocadiscos_brazo_arriba": [
+  108,
+  2
+ ],
+ "tocadiscos_play": [
+  96,
+  27
+ ],
+ "tocadiscos_pausa": [
+  95,
+  27
+ ],
+ "tocadiscos_tecla_ant": [
+  10,
+  14
+ ],
+ "tocadiscos_tecla_ant_hundida": [
+  10,
+  14
+ ],
+ "tocadiscos_tecla_sig": [
+  159,
+  14
+ ],
+ "tocadiscos_tecla_sig_hundida": [
+  159,
+  14
+ ],
+ "tocadiscos_nota1": [
+  58,
+  6
+ ],
+ "tocadiscos_nota2": [
+  134,
+  2
+ ],
+ "foco": [
+  79,
+  32
+ ],
+ "centro_disco": [
+  95,
+  16
+ ],
+ "piso": [
+  0,
+  61
+ ]
+}

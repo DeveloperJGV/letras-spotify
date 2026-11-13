@@ -8,17 +8,22 @@
     <string name="bg_sky">cielo según la hora</string>
     <string name="bg_folder">%1$s (%2$d imágenes)</string>
     <string name="bg_no_folders">No hay carpetas con imágenes en Pictures/Letras/fondos</string>
-    <string name="opt_pick_background">Fondo</string>
-    <string name="bg_button">Cambiar fondo</string>
+    <string name="bg_button">Elegir fondo</string>
+    <string name="bg_sky_card">Cielo</string>
+    <string name="song_bar">Barra de la canción: arrastra el foco para adelantar o regresar</string>
+    <string name="transport">Anterior (tecla izquierda), reproducir o pausar (centro), siguiente (tecla derecha)</string>
     <string name="opt_title">Opciones</string>
-    <string name="opt_background">Fondo: %1$s</string>
-    <string name="opt_fit">Arte: %1$s</string>
+    <!-- Las fichas del cajón de opciones: el nombre (el valor va aparte, en negrita). -->
+    <string name="opt_label_background">Fondo</string>
+    <string name="opt_label_fit">Arte</string>
+    <string name="opt_label_every">Cambiar arte</string>
+    <string name="opt_label_scrim">Oscurecer detrás de la letra</string>
+    <string name="opt_label_quiet">Modo tranquilo de noche</string>
+    <string name="opt_label_translate">Traducir a</string>
     <string name="opt_fit_whole">completo</string>
     <string name="opt_fit_fill">llenar la pantalla</string>
-    <string name="opt_every">Cambiar arte: %1$s</string>
     <string name="opt_every_song">con cada canción</string>
     <string name="opt_every_min">cada %1$d min</string>
-    <string name="opt_scrim">Oscurecer detrás de la letra: %1$s</string>
     <string-array name="scrim_levels">
         <item>poco</item>
         <item>medio</item>
@@ -26,17 +31,12 @@
     </string-array>
     <string name="next_art">Siguiente imagen</string>
     <string name="opt_next_art">Siguiente imagen</string>
-    <string name="opt_quiet">Modo tranquilo de noche: %1$s</string>
     <string name="quiet_auto">automático</string>
     <string name="quiet_off">apagado</string>
     <string name="quiet_label">MODO TRANQUILO</string>
-    <string name="close">Cerrar</string>
     <string name="nothing_playing">Nada sonando en Spotify</string>
     <string name="paused">En pausa</string>
     <string name="paused_song">En pausa · %1$s — %2$s</string>
-    <string name="previous">Anterior</string>
-    <string name="next">Siguiente</string>
-    <string name="play_pause">Reproducir o pausar</string>
     <string name="mute">Silencio</string>
     <string name="volume">Volumen</string>
     <string name="seek_needs_login">Para adelantar la canción, conecta con Spotify en Opciones.</string>
@@ -50,14 +50,37 @@
     <string name="battery_label_low">POCA BATERÍA</string>
     <string name="help_title">Cómo se usa</string>
     <string name="help_screensaver">Protector de pantalla</string>
-    <string name="help_text">Botones de arriba: ? esta ayuda · cuadro: cambiar el fondo · tres puntos: opciones.\n\nCon música, abajo: anterior, pausa, siguiente, volumen y la barra de la canción (arrástrala para adelantar). Mientras suena se esconde sola: toca la pantalla para que vuelva.\n\nDoble toque en cualquier parte: cambiar el fondo. Mantener presionado: opciones. Si deslizas la letra con el dedo, se queda ahí 5 segundos.\n\nFondos: el cielo, o una carpeta de imágenes. Cada carpeta dentro de Pictures/Letras/fondos es una opción con su nombre (Lofi, Boda, Hunter y Tango…). Adentro, sus carpetas dia y noche son solo para esa hora. Si el archivo se llama «Artista - Título», sale el crédito. La flechita de abajo pasa a la siguiente imagen.\n\nProtector de pantalla: con la tablet cargando, en vez de apagarse muestra esta pantalla. Se elige en Ajustes → Pantalla → Protector de pantalla → Letras.\n\nReproducir en…: con sesión de Spotify, elige en qué aparato suena la música (la PC, una bocina, el celular).\n\nTraducción: en horizontal la letra va en dos columnas, el original y la traducción. En vertical, un toque sobre la letra la cambia a la traducción y otro la regresa. El idioma (español o inglés) se elige en Opciones → Traducir a.\n\nModo tranquilo: de noche, si suena música para dormir (lenta, lofi, ambient, piano, lluvia…), baja el brillo, oscurece la letra y Hunter y Tango se acuestan a escuchar. Si hay una carpeta «Dormir» en tus fondos, usa esas imágenes. Se apaga en Opciones.\n\nHunter y Tango tienen un secreto. Tócalos.</string>
+    <!-- La ayuda: una hoja de la libretita por sección (título y párrafo; el mismo número de cada uno). -->
+    <string-array name="help_titles">
+        <item>Botones de arriba</item>
+        <item>Con música, abajo</item>
+        <item>Toques</item>
+        <item>Fondos</item>
+        <item>Protector de pantalla</item>
+        <item>Reproducir en…</item>
+        <item>Traducción</item>
+        <item>Modo tranquilo</item>
+        <item>Un secreto</item>
+    </string-array>
+    <string-array name="help_pages">
+        <item>El letrero con ? es esta ayuda · la ventanita: elegir el fondo (sube una charola con una postal por fondo; toca la que quieras) · la comodita de tres cajones: opciones.</item>
+        <item>El tocadiscos (tecla izquierda: anterior · el tocadiscos: pausa o play · tecla derecha: siguiente), la corneta (tócala para silenciar: le meten un calcetín; otra vez, regresa), el volumen (arrastra la lupa por el cuarto) y el cable de foquitos de la canción (arrastra el foco grande para adelantar o regresar). Mientras suena se esconde sola: toca la pantalla para que vuelva.</item>
+        <item>Doble toque en cualquier parte: cambiar el fondo. Mantener presionado: opciones. Si deslizas la letra con el dedo, se queda ahí 5 segundos.</item>
+        <item>El cielo, o una carpeta de imágenes. Cada carpeta dentro de Pictures/Letras/fondos es una opción con su nombre (Lofi, Boda, Hunter y Tango…). Adentro, sus carpetas dia y noche son solo para esa hora. Si el archivo se llama «Artista - Título», sale el crédito. La flechita de abajo pasa a la siguiente imagen.</item>
+        <item>Con la tablet cargando, en vez de apagarse muestra esta pantalla. Se elige en Ajustes → Pantalla → Protector de pantalla → Letras.</item>
+        <item>Con sesión de Spotify, elige en qué aparato suena la música (la PC, una bocina, el celular).</item>
+        <item>En horizontal la letra va en dos columnas, el original y la traducción. En vertical, un toque sobre la letra la cambia a la traducción y otro la regresa. El idioma (español o inglés) se elige en Opciones → Traducir a.</item>
+        <item>De noche, si suena música para dormir (lenta, lofi, ambient, piano, lluvia…), baja el brillo, oscurece la letra y Hunter y Tango se acuestan a escuchar. Si hay una carpeta «Dormir» en tus fondos, usa esas imágenes. Se apaga en Opciones.</item>
+        <item>Hunter y Tango tienen un secreto. Tócalos.</item>
+    </string-array>
+    <string name="help_page_of">%1$d de %2$d</string>
+    <string name="help_open_screensaver">Abrir ajustes del protector</string>
     <string name="searching">Buscando la letra…</string>
     <string name="no_lyrics">No encontré la letra de esta canción</string>
     <string name="instrumental">♪ Instrumental ♪</string>
     <string name="not_a_song">Spotify está reproduciendo algo que no es canción</string>
     <string name="network_error">Sin conexión con Spotify. Reintentando…</string>
     <string name="login_failed">No se pudo iniciar sesión: %1$s</string>
-    <string name="opt_translate">Traducir a: %1$s</string>
     <string name="lang_es">español</string>
     <string name="lang_en">inglés</string>
     <string name="translate_off">no</string>
@@ -66,6 +89,7 @@
     <string name="translate_off_hint">La traducción está apagada (Opciones → Traducir a)</string>
     <string name="opt_devices">Reproducir en…</string>
     <string name="devices_title">¿Dónde reproducir?</string>
+    <string name="devices_demo">(demo) Sonando en %1$s</string>
     <string name="devices_loading">Buscando aparatos con Spotify…</string>
     <string name="devices_none">No hay ningún aparato con Spotify abierto ahora</string>
     <string name="devices_moved">Sonando en %1$s</string>

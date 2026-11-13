@@ -42,9 +42,39 @@ son de sus autores.
      la letra oficial. La tablet encuentra la PC sola en la red.
   2. **API de Spotify** (respaldo, opcional): para cuando suena en otro aparato (o la PC no tiene Javbots prendido).
      Letra de [LRCLIB](https://lrclib.net).
-- **Botones siempre a la vista** arriba a la derecha: ayuda (?), cambiar fondo y opciones.
+- **Botones siempre a la vista** arriba a la derecha, de madera como el cuarto: un letrero con **?** (la ayuda;
+  se columpia al tocarlo), la ventanita del fondo y una **comodita de tres cajones** (las opciones: sus tres
+  perillas son los tres puntitos; al tocarla se abre el cajón de en medio y adentro está el hueso de Tango).
+- **Los menús también son escenitas en pixel** (nada de diálogos grises de Android):
+  - **Opciones = el cajón de la comodita abierto**: una ficha de biblioteca por opción sobre fieltro, con un objeto
+    que cambia con el valor (el reloj digital, la persiana que baja, la luna, el libro del idioma…) y su control:
+    perilla de latón (varios valores: gira un clic), interruptor (sí/no) o pestañita (abre otra cosa). Lo que cambia
+    un valor se cambia ahí mismo y el cajón sigue abierto, para ver el efecto detrás. Tango se echa en el hueco a
+    morder su hueso. En horizontal, dos columnas.
+  - **Cómo se usa = una libretita de espiral**: una sección por hoja con el dibujito del control del que habla,
+    pestañas de colores para brincar, y se pasa la hoja deslizando o con la esquina doblada. En horizontal se abre
+    en dos hojas.
+  - **Reproducir en… = un mueble con los aparatos de la casa** que sube desde abajo: la PC, el celular, la bocina, la
+    tele, la tablet, cada uno con su placa. El que suena lleva placa de latón, notitas y a Hunter con audífonos; al
+    escoger otro, las notitas viajan en arco y Hunter corre para allá.
+
+    ![El cajón de opciones, la libretita y el mueble de los aparatos](docs/capturas/controles-pixel/despues4-menus.png)
 - **Controles de la música** en una píldora flotante arriba de los perros: anterior, play/pausa, siguiente,
-  volumen (tocar la bocina lo silencia) y la barra de la canción (arrastrarla adelanta o regresa).
+  volumen y la barra de la canción.
+  - **Anterior, play/pausa y siguiente son un tocadiscos** en otro rincón del mismo cuarto, en una cápsula hermana
+    de la del volumen: la tecla de la izquierda es anterior, la de la derecha siguiente (se hunden y se ponen
+    naranjas) y todo el tocadiscos es play/pausa (rebota). Sonando, el disco gira, el brazo está sobre él y salen
+    notitas; en pausa, el brazo se levanta. Al pasar de canción el disco sale hacia ese lado y entra otro con la
+    etiqueta del color de la portada, y cruza corriendo Tango (siguiente) o Hunter (anterior). Si la canción cambia
+    sola, solo cambia el disco.
+
+    ![El tocadiscos, la corneta, el volumen y el cable de foquitos](docs/capturas/controles-pixel/despues2-pildora-dia-sonando.png)
+  - **La barra de la canción es un cable de foquitos** como el del cuarto: lo ya escuchado va con los focos
+    prendidos. La bolita es un foco grande que late con la música (al pulso, si llega el tempo) y en pausa se
+    apaga a medias. Al arrastrarlo (todo el renglón se puede agarrar) crece, el letrero de la izquierda se enciende
+    con el tiempo al que vas y Tango corre detrás del foco. Los tiempos van en letreritos de madera.
+  - **La bocina de silencio es la corneta de un gramófono:** sonando le salen notitas; tócala y le meten un
+    calcetín rojo en la boca (así se callaban los gramófonos); otra vez y regresa el volumen.
   - **El volumen es el cuarto de Hunter y Tango:** una cápsula con su cuartito en pixel art, y lo que se arrastra es
     una lupa de vidrio que agranda lo que pasa por debajo. En silencio duermen, bajito se echan a escuchar, a medio
     volumen mueven la cabeza y fuerte hacen fiesta. De noche el cuarto se oscurece, se ven las estrellas por la
@@ -55,7 +85,7 @@ son de sus autores.
     Spotify Premium; adelantar y el volumen exacto necesitan la sesión de Spotify en la tablet.
   - Responden al instante: la pausa o el salto se ven en seguida, sin esperar a que Spotify conteste.
   - Sonando, se esconden solos a los 6 s y vuelven al tocar la pantalla. En pausa se quedan.
-- **Movimiento suave:** los botones se hunden y rebotan, el ícono de play se transforma en pausa, con canción
+- **Movimiento suave:** los botones se hunden y rebotan, con canción
   nueva el título se desliza y la portada aparece con un rebote, la letra entra subiendo y avanza arrancando y
   frenando suave.
 - **Traducción de la letra** (español o inglés): en horizontal, dos columnas (original y traducción); en vertical,
@@ -65,19 +95,33 @@ son de sus autores.
   lluvia… en el título, artista o disco), baja el brillo, oscurece la letra y Hunter y Tango se acuestan a escuchar
   con audífonos hasta dormirse. Si hay una carpeta `Dormir` en tus fondos, usa esas imágenes. Se apaga en Opciones.
 - **Reloj** con brillo según el cielo (azul de noche, durazno de día), los dos puntos latiendo y la fecha abajo.
-- **Batería** junto al reloj: una pila que se llena con su color (verde, ámbar, rojo), con burbujas y un rayo que
-  late mientras carga. Con la letra, si queda poca, sale junto al título.
-- **Clima** del otro lado del reloj ([Open-Meteo](https://open-meteo.com), sin clave): temperatura, cielo,
-  máxima/mínima y probabilidad de lluvia, con el ícono de [Meteocons](https://github.com/basmilius/meteocons)
-  animado por capas (rayos que giran, nubes que flotan, gotas que caen, el rayo que parpadea). Se pide cada media
-  hora.
+- **Clima** junto al reloj ([Open-Meteo](https://open-meteo.com), sin clave), en pixel art: una cápsula como la
+  del volumen con el patio de afuera (el cielo según el clima, la ciudad del cuarto y el pasto) y la temperatura en
+  un letrero de madera clavado en el pasto; a un lado, el cielo en palabras, la máxima, la mínima y la lluvia. Un
+  perro reacciona: con lluvia Tango saca el paraguas (también "por si acaso" si la probabilidad es de 60 % o más),
+  con tormenta se asusta, con sol Hunter se pone lentes, de noche despejada saca el telescopio, con calor Tango come
+  nieve, con frío o nieve Hunter se pone la bufanda, nublado mira al cielo y con niebla Tango va olfateando. De
+  noche, un foquito alumbra el letrero. Se pide cada media hora.
+- **Batería** como el plato de croquetas de Hunter y Tango: copetón al 100 %, a la mitad, tres croquetas cuando
+  queda poca. Cargando, el costal está junto al plato y Hunter espera; al conectarla salta una chispa y caen
+  croquetas; con poca, Tango llega a olfatear el plato vacío. El porcentaje va en números de pixel (blanco, ámbar o
+  rojo). Con la letra, si queda poca, sale junto al título.
+- **Casi todo quieto:** el perro del clima hace lo suyo una vez (cuando cambia el clima, al aparecer el reloj o al
+  tocarlo) y se queda así; la lluvia y la nieve caen solo mientras haya, y con tormenta cae un rayo de vez en cuando.
+  Sobre el cielo van con pixeles dobles para leerlos de lejos (en vertical, uno arriba del otro y el reloj sube); en
+  horizontal y con imagen de fondo, a tamaño normal.
+
+  ![El clima y la pila en pixel, de día con lluvia y de noche despejada](docs/capturas/controles-pixel/despues3-clima-pila.png)
 - **Tarjeta de datos** bajo el reloj, cambia cada 25 s: el cielo de hoy (fase de la luna, días para la llena,
   salida y puesta del sol), "un día como hoy" (Wikipedia en español), un dato geek y tus propias frases.
   En vertical, el clima y la pila van juntos abajo de la tarjeta.
 - **Sin la PC** (apagada o dormida) dice "Nada sonando" y la busca por detrás, sin anunciarlo.
 - **Protector de pantalla:** con la tablet cargando, en vez de apagarse muestra esta misma pantalla
   (Ajustes → Pantalla → Protector de pantalla → Letras). Botón ✕ para salir.
-- **Fondos** (botón del cuadrito o doble toque para cambiar):
+- **Fondos:** la ventanita de arriba enseña en chiquito el fondo que se ve; al tocarla sube una **charola de
+  postales**, una por fondo (el cielo y cada carpeta), con la actual marcada con una chinche y Hunter sentado junto a
+  ella. Tocar otra la elige (Hunter brinca hasta allá) y la charola se cierra sola; tocar fuera, el botón de atrás o
+  12 s sin tocarla también la cierran. El **doble toque** en la pantalla sigue pasando al siguiente fondo.
   - **Cielo según la hora:** amanecer, día con nubes, atardecer, noche con estrellas y la **luna en su fase de
     hoy** (creciente, llena, menguante…, calculada por la fecha).
   - **Y según el clima de verdad:** despejado casi sin nubes; nublado, el cielo lleno y más gris; con lluvia cae
@@ -138,11 +182,14 @@ Te quiero
 # los renglones con # no salen
 ```
 
-## Opciones (mantener presionado en la pantalla)
+## Opciones (mantener presionado en la pantalla, o la comodita)
+
+Cada ficha del cajón dice su valor; las de perilla o interruptor cambian al tocarlas (y el cajón sigue abierto), las
+de pestañita cierran el cajón y abren lo suyo. Se cierra tocando fuera o con atrás.
 
 | Opción                         | Valores                                                   |
 | ------------------------------ | --------------------------------------------------------- |
-| Fondo                          | cielo o una de tus carpetas (lista para escoger)          |
+| Fondo                          | abre la charola de postales (cielo o una de tus carpetas) |
 | Arte                           | completo (con relleno borroso) · llenar la pantalla       |
 | Cambiar imagen (con música)    | con cada canción · cada 5, 15 o 60 min                    |
 | Oscurecer detrás de la letra   | poco · medio · mucho                                      |
@@ -150,9 +197,9 @@ Te quiero
 | Traducir a                     | español · inglés · no (horizontal: dos columnas; vertical: un toque en la letra la cambia) |
 | Siguiente imagen               | (también la flechita junto al crédito)                    |
 | Protector de pantalla          | abre los ajustes de Android para elegirlo                 |
-| Cómo se usa                    | la ayuda                                                  |
-| Reproducir en…                 | (si hay sesión) pasa la música a otro aparato con Spotify |
-| Cerrar sesión de Spotify       | (si hay sesión)                                           |
+| Cómo se usa                    | la libretita de ayuda (una hoja por sección; en la del protector, el botón para abrir sus ajustes) |
+| Reproducir en…                 | (si hay sesión) el mueble de los aparatos: toca uno y la música se pasa ahí |
+| Cerrar sesión de Spotify       | (si hay sesión; sin sesión y con client ID: Conectar con Spotify) |
 
 ## Configurar y compilar
 
@@ -204,6 +251,8 @@ acciones ──► reduce(estado, acción) ──► estado nuevo + efectos
 | `Datos.kt`, `Clima.kt` | Las tarjetas de datos (Kotlin puro, con pruebas) y de dónde salen (clima, Wikipedia, tus frases). |
 | `SkyView`, `DogsView`, `ArtView`, `ClockView`, `BatteryView`, `WeatherView` | Vistas que se dibujan solas (cielo y luna, Hunter y Tango, imágenes, reloj, batería, clima). |
 | `VolumeCapsule` | El volumen: el cuarto de Hunter y Tango con la lupa de vidrio. |
+| `Menus.kt` | Lo que deciden los menús en pixel (qué opciones salen, control y posición de cada una, hojas de la ayuda, aparato por tipo). Kotlin puro, con pruebas. |
+| `OptionsPanel`, `HelpNotebook`, `DevicesTray` | El cajón de opciones, la libretita de ayuda y el mueble de "Reproducir en…" (Canvas, arte de `arte/controles/armar_menus.py`). |
 
 Pruebas (en la PC, sin tablet):
 
@@ -218,10 +267,16 @@ cd android
   [PixelLab](https://pixellab.ai). Los cuadros originales están en `arte/pixellab/` y `arte/armar_perros.py` arma
   las hojas de la app (Hunter se recolorea a gris atigrado).
 - Letras: Spotify (vía Javbots) y [LRCLIB](https://lrclib.net).
-- Íconos del clima y forma de las nubes: [Meteocons](https://github.com/basmilius/meteocons) de Bas Milius (MIT,
-  `arte/meteocons/LICENSE`), partidos en capas con `arte/meteocons/split.py` y `render.mjs`.
+- Forma de las nubes del cielo: [Meteocons](https://github.com/basmilius/meteocons) de Bas Milius (MIT,
+  `arte/meteocons/LICENSE`), con `arte/meteocons/split.py` y `render.mjs`.
+- El clima y la pila en pixel: dibujados por código en `arte/controles/maquetas_clima_bateria.py` y exportados a la
+  app con `arte/controles/armar_clima_bateria.py` (`clima_*.png`, `plato_*.png`).
 - Clima: [Open-Meteo](https://open-meteo.com) (CC BY 4.0). Efemérides: [Wikipedia en español](https://es.wikipedia.org) (CC BY-SA).
 - Fondos de artistas: de sus autores, con el crédito que se muestra en pantalla. No se incluyen en este repo.
 - El cuarto del volumen: hecho en [PixelLab](https://pixellab.ai) (de día, y la noche editando ese mismo),
   originales en `arte/pixellab/cuarto/`.
-- Íconos de los botones: [Material Icons](https://fonts.google.com/icons) (Apache 2.0).
+- El tocadiscos, las postales, la ventanita, el cable de foquitos, la corneta, el letrero y la comodita: dibujados con Python (Pillow) en `arte/controles/armar_controles.py`
+  sobre la pared y los colores del cuarto (sin PixelLab); las maquetas de las opciones en `arte/controles/maquetas.py` y `maquetas_barra_botones.py`.
+- Los menús (cajón, libretita, mueble de aparatos): dibujados con Python en `arte/controles/maquetas_menus.py` (maquetas)
+  y exportados con `arte/controles/armar_menus.py` (`menu_*.png`, `libreta_*.png`, `aparato_*.png`), sin PixelLab.
+- Íconos del botón ✕ del protector: [Material Icons](https://fonts.google.com/icons) (Apache 2.0).

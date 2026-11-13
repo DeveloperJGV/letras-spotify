@@ -4,15 +4,14 @@ import android.animation.ArgbEvaluator
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Typeface
-import android.graphics.drawable.AnimatedVectorDrawable
 import android.os.BatteryManager
 import android.os.SystemClock
 import android.provider.Settings
@@ -27,11 +26,9 @@ import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.view.animation.PathInterpolator
 import android.widget.Button
-import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import kotlinx.coroutines.Dispatchers
@@ -109,12 +106,27 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private val connect: Button = root.findViewById(R.id.connect)
     private val connectHint: View = root.findViewById(R.id.connectHint)
     private val controls: View = root.findViewById(R.id.controls)
-    private val playPause: ImageButton = root.findViewById(R.id.playPause)
-    private val volumeIcon: ImageButton = root.findViewById(R.id.volumeIcon)
+    private val transport: TransportCapsule = root.findViewById(R.id.transport)
+    private val bgWindow: BackgroundWindow = root.findViewById(R.id.btnBackground)
+    private val tray: PostcardTray = root.findViewById(R.id.tray)
+    private val trayScrim: View = root.findViewById(R.id.trayScrim)
+    private val volumeIcon: MuteHorn = root.findViewById(R.id.volumeIcon)
+    private val helpButton: HelpSign = root.findViewById(R.id.btnHelp)
+    private val optionsButton: OptionsDrawer = root.findViewById(R.id.btnOptions)
     private val volumeCapsule: VolumeCapsule = root.findViewById(R.id.volumeCapsule)
-    private val progressBar: SeekBar = root.findViewById(R.id.progressBar)
-    private val elapsed: TextView = root.findViewById(R.id.elapsed)
-    private val total: TextView = root.findViewById(R.id.total)
+    private val songBar: SongBar = root.findViewById(R.id.songBar)
+    private val menuScrim: View = root.findViewById(R.id.menuScrim)
+    private val optionsPanel: OptionsPanel = root.findViewById(R.id.optionsPanel)
+    private val helpNotebook: HelpNotebook = root.findViewById(R.id.helpNotebook)
+    private val devicesTray: DevicesTray = root.findViewById(R.id.devicesTray)
+    /** Quien abrió el menú (la Activity: abre los ajustes del protector y pregunta antes de cerrar sesión). */
+    private var menuActivity: Activity? = null
+    private var onLogout: () -> Unit = {}
+    private var devicesJob: Job? = null
+    /** El aparato que sonaba al abrir el mueble (para regresar a él si no se pudo pasar la música). */
+    private var playingOn: String? = null
+    /** Solo debug: el mueble con aparatos de ejemplo (escoger uno no llama a la API). */
+    private var demoDevices = false
 
     private var state = loadPrefs()
 
@@ -125,6 +137,15 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private var coverJob: Job? = null
     private var imageJob: Job? = null
     private var datosJob: Job? = null
+    private var windowThumbJob: Job? = null
+    private var trayThumbsJob: Job? = null
+
+    /** Miniatura de cada carpeta de fondos (la primera imagen por nombre), chiquita y en memoria (por carpeta, noche y forma). */
+    private val thumbs = HashMap<String, Bitmap>()
+    /** Cuándo se tocó siguiente/anterior: si la canción cambia poco después, el disco ya cambió. */
+    private var lastSkipAt = 0L
+    /** Color de la etiqueta del disco, sacado de la portada que se ve. */
+    private var coverLabel = TransportCapsule.DEFAULT_LABEL
 
     // Lo que ya llegó para las tarjetas de datos (se vuelven a armar cada minuto).
     private var weather: Weather? = null
@@ -159,7 +180,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDoubleTap(e: MotionEvent): Boolean {
             // Sobre los perros los toques son para ellos (y su secreto).
-            if (!overDogs(e)) cycleBackground()
+            if (!overDogs(e) && !state.backgroundsOpen) cycleBackground()
             return true
         }
 
@@ -184,45 +205,71 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
 
     init {
         connect.setOnClickListener { host.startLogin() }
-        root.findViewById<View>(R.id.btnHelp).setOnClickListener { host.openMenu(Menu.HELP) }
-        root.findViewById<View>(R.id.btnBackground).setOnClickListener { cycleBackground() }
-        root.findViewById<View>(R.id.btnOptions).setOnClickListener { host.openMenu(Menu.OPTIONS) }
+        // El letrero se columpia y la comodita abre su cajón: el menú sale un instante después, para que se vea.
+        helpButton.setOnClickListener { helpButton.postDelayed({ host.openMenu(Menu.HELP) }, MENU_DELAY_MS) }
+        bgWindow.setOnClickListener { dispatch(Action.OpenBackgrounds(SystemClock.elapsedRealtime())) }
+        optionsButton.setOnClickListener { optionsButton.postDelayed({ host.openMenu(Menu.OPTIONS) }, MENU_DELAY_MS) }
         root.findViewById<View>(R.id.btnExit).apply {
             visibility = if (host.isScreensaver) View.VISIBLE else View.GONE
             setOnClickListener { host.exit() }
         }
         credit.setOnClickListener { dispatch(Action.NextImage(SystemClock.elapsedRealtime())) }
-        root.findViewById<View>(R.id.btnPrevious).setOnClickListener { control("previous") }
-        playPause.setOnClickListener { control("togglePlay") }
-        root.findViewById<View>(R.id.btnNext).setOnClickListener { control("next") }
+        transport.onCommand = { command ->
+            // Siguiente/anterior: el disco cambia en seguida y cruza Tango (siguiente) o Hunter (anterior).
+            if (command != "togglePlay" && state.canControl && state.track != null) {
+                lastSkipAt = SystemClock.elapsedRealtime()
+                transport.changeDisc(if (command == "next") 1 else -1, withDog = true)
+                transport.clearLabel()
+            }
+            control(command)
+        }
+        tray.listener = object : PostcardTray.Listener {
+            override fun onPick(card: PostcardTray.Postcard) {
+                dispatch(Action.BackgroundChosen(card.folder, SystemClock.elapsedRealtime(), fromTray = true))
+            }
+
+            override fun onTouched() = dispatch(Action.TrayTouched(SystemClock.elapsedRealtime()))
+        }
+        trayScrim.setOnClickListener { dispatch(Action.CloseBackgrounds) }
+        menuScrim.setOnClickListener { dispatch(Action.ClosePanel) }
+        optionsPanel.listener = ::onOption
+        helpNotebook.listener = object : HelpNotebook.Listener {
+            override fun onScreensaverSettings() {
+                dispatch(Action.ClosePanel)
+                menuActivity?.let(::openScreensaverSettings)
+            }
+        }
+        devicesTray.listener = object : DevicesTray.Listener {
+            override fun onPick(device: Device) = pickDevice(device)
+            override fun onConnect() {
+                dispatch(Action.ClosePanel)
+                host.startLogin()
+            }
+        }
         volumeIcon.setOnClickListener {
             val v = state.track?.volume ?: return@setOnClickListener
             if (v > 0f) unmuteTo = v
             poke()
             dispatch(Action.SetVolume(if (v > 0f) 0f else unmuteTo, SystemClock.elapsedRealtime()))
         }
-        progressBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
-                val t = state.track ?: return
-                if (fromUser) elapsed.text = clockText(t.durationMs * progress / bar.max)
-            }
-
-            override fun onStartTrackingTouch(bar: SeekBar) {
+        songBar.listener = object : SongBar.Listener {
+            override fun onDragStart() {
                 dragging = true
+                poke()
             }
 
-            override fun onStopTrackingTouch(bar: SeekBar) {
+            override fun onDragEnd(positionMs: Long) {
                 dragging = false
                 poke()
-                val t = state.track ?: return
+                if (state.track == null) return
                 if (!canUseApi) {
                     toast(context.getString(if (auth.needsReconnect) R.string.control_reconnect else R.string.seek_needs_login))
                     renderProgress(SystemClock.elapsedRealtime())
                     return
                 }
-                dispatch(Action.Seek(t.durationMs * bar.progress / bar.max, SystemClock.elapsedRealtime()))
+                dispatch(Action.Seek(positionMs, SystemClock.elapsedRealtime()))
             }
-        })
+        }
         volumeCapsule.listener = object : VolumeCapsule.Listener {
             override fun onDragStart() {
                 dragging = true
@@ -230,7 +277,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             }
 
             override fun onDragging(volume: Float) {
-                volumeIcon.setImageResource(if (volume <= 0f) R.drawable.ic_volume_off else R.drawable.ic_volume_up)
+                volumeIcon.volume = volume
             }
 
             override fun onDragEnd(volume: Float) {
@@ -241,8 +288,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         }
         // Todos los botones se hunden al tocarlos y rebotan al soltar.
         listOf(
-            R.id.btnPrevious, R.id.playPause, R.id.btnNext, R.id.volumeIcon, R.id.btnHelp, R.id.btnBackground,
-            R.id.btnOptions, R.id.btnExit, R.id.connect,
+            R.id.volumeIcon, R.id.btnBackground, R.id.btnExit, R.id.connect,
         ).forEach { bouncy(root.findViewById(it)) }
         // La píldora: a lo ancho en vertical; centrada y no tan larga en horizontal.
         root.addOnLayoutChangeListener { _, l, _, r, _, ol, _, or_, _ ->
@@ -308,6 +354,20 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
 
         if (changed({ it.waiting })) renderWaiting(s)
         if (changed({ it.track })) renderHeader(old, s)
+        // Otra canción: otro disco. Si fue con siguiente/anterior, ya cambió al tocar (con su perro).
+        val oldId = old?.track?.id
+        val newId = s.track?.id
+        if (oldId != null && newId != null && oldId != newId) {
+            if (TransportCapsule.changesByItself(lastSkipAt, SystemClock.elapsedRealtime())) transport.changeDisc(1, withDog = false)
+            transport.setLabelColor(coverLabel)
+        }
+        if (changed({ it.activeFolder })) renderWindow(s)
+        if (changed({ it.backgroundsOpen })) renderTray(s)
+        if (changed({ it.panel })) renderPanel(old?.panel ?: Menus.Panel.NONE, s)
+        else if (s.panel == Menus.Panel.OPTIONS &&
+            changed({ it.fitImage }, { it.imageEveryMin }, { it.scrimLevel }, { it.quietEnabled }, { it.translateTo }, { it.folder })
+        ) optionsPanel.show(optionRows(s))
+        if (old != null && old.folder != s.folder) tray.setCurrent(s.folder)
         if (changed({ it.showControls }, { it.showingLyrics }, { it.track?.isPlaying }, { it.track?.volume })) renderControls(old, s)
         // La letra se compara por identidad: el reducer solo la cambia cuando llega otra.
         if (changed({ it.lyricsForId }, { it.lyricsFailed }) || old?.lyrics !== s.lyrics) {
@@ -388,14 +448,55 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
 
     /** Toques de toda la pantalla: el doble toque y mantener presionado funcionan encima de la letra. */
     fun onTouch(ev: MotionEvent) {
+        // Con la charola de fondos o un menú abierto, los toques son para ellos (sin doble toque ni menú).
+        if (state.backgroundsOpen || state.panel != Menus.Panel.NONE) return
         // Cualquier toque trae de regreso los controles de la música (si se habían escondido).
         if (ev.actionMasked == MotionEvent.ACTION_DOWN) poke()
         gestures.onTouchEvent(ev)
     }
 
+    /** El botón de atrás de Android: cierra el menú o la charola de fondos si hay uno abierto (true = ya se usó). */
+    fun onBack(): Boolean {
+        if (state.panel != Menus.Panel.NONE) {
+            dispatch(Action.ClosePanel)
+            return true
+        }
+        if (!state.backgroundsOpen) return false
+        dispatch(Action.CloseBackgrounds)
+        return true
+    }
+
+    /**
+     * Solo debug: la animación de siguiente ("next"), anterior ("previous") o la de una canción que cambia sola
+     * (cualquier otra cosa), sin mandar nada a Spotify. Va 8 veces más lenta para poder capturarla.
+     */
+    fun debugAnimate(what: String) {
+        when (what) {
+            "next" -> transport.changeDisc(1, withDog = true, slower = DEBUG_SLOWER)
+            "previous" -> transport.changeDisc(-1, withDog = true, slower = DEBUG_SLOWER)
+            "arrastrar" -> songBar.debugDrag(0.66f)
+            "silencio" -> volumeIcon.debugMute()
+            "ayuda" -> helpButton.play(DEBUG_SLOWER)
+            "opciones" -> optionsButton.play(DEBUG_SLOWER)
+            else -> transport.changeDisc(1, withDog = false, slower = DEBUG_SLOWER)
+        }
+    }
+
+    /** Solo debug: abre el mueble con aparatos de ejemplo (escoger uno no llama a la API de Spotify). */
+    fun debugDevicesDemo() {
+        demoDevices = true
+        dispatch(Action.OpenPanel(Menus.Panel.DEVICES))
+    }
+
+    /** Solo debug: la hoja con la que abre la libretita la próxima vez (0 = la primera). */
+    var debugHelpPage = 0
+
     /** Giró la tablet: en horizontal la letra va en dos columnas (original y traducción), en vertical en una. */
     fun onOrientationChanged() {
         renderLyrics(state, Entrance.SWAP)
+        // El cajón va en 2 columnas y la libreta en dos hojas en horizontal.
+        optionsPanel.columns = if (landscape) 2 else 1
+        helpNotebook.spread = landscape
     }
 
     /** Solo debug: hora del cielo, fase de la luna, fondo ("cielo", o el nombre de una carpeta) y clima (código WMO) fijos. */
@@ -414,7 +515,28 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         if (background != null) dispatch(Action.BackgroundChosen(background.takeUnless { it.isEmpty() || it == "cielo" }, SystemClock.elapsedRealtime()))
     }
 
+    /** Solo debug: una batería fija (solo cambia la vista; la de verdad se ignora mientras tanto). */
+    fun debugBattery(percent: Int, charging: Boolean) {
+        forcedBattery = Battery(percent.coerceIn(0, 100), charging)
+        dispatch(Action.BatteryChanged(forcedBattery!!))
+    }
+
+    private var forcedBattery: Battery? = null
+
+    /** Solo debug: la probabilidad de lluvia del clima fijo (para ver el paraguas "por si acaso"). */
+    fun debugRainChance(chance: Int) {
+        forcedRain = chance
+        datosJob?.cancel()
+        datosJob = scope.launch { datosLoop() }
+    }
+
+    private var forcedRain: Int? = null
+
+    /** El relleno de abajo que pide layoutIdleClock (layoutSides lo agranda para el clima y la pila a 2x). */
+    private var idleBottomBase = -1
+
     private fun onBattery(intent: Intent) {
+        if (forcedBattery != null) return
         val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
         val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
         if (level < 0 || scale <= 0) return
@@ -538,6 +660,17 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         battery.night = darkness
         weatherView.night = darkness
         volumeCapsule.night = darkness
+        transport.night = darkness
+        songBar.night = darkness
+        volumeIcon.night = darkness
+        helpButton.night = darkness
+        optionsButton.night = darkness
+        bgWindow.night = darkness
+        tray.night = darkness
+        optionsPanel.night = darkness
+        helpNotebook.night = darkness
+        devicesTray.night = darkness
+        if (state.activeFolder == null) bgWindow.showSky(sky.forcedHour ?: SkyView.currentHour())
         if (sky.forcedMoonPhase == null) {
             dogs.fullMoon = SkyView.illumination(SkyView.moonPhase(System.currentTimeMillis())) > FULL_MOON
         }
@@ -545,6 +678,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         val t = s.track
         // Al ritmo: cuántos pulsos van de la canción (se pausa con ella).
         dogs.beat = t?.tempo?.takeIf { t.isPlaying && s.showingLyrics }?.let { t.positionAt(now) * it / 60_000.0 }
+        // El foco de la barra late al pulso (si hay tempo).
+        songBar.beat = t?.tempo?.takeIf { it > 0f && t.isPlaying }?.let { t.positionAt(now) * it / 60_000.0 }
         // Letra sin tiempos por renglón: se avanza en proporción a lo que va de la canción.
         if (t != null && s.showingLyrics && s.lyrics is Lyrics.Plain && t.isPlaying && t.durationMs > 0 && !recentlyTouched(now)) {
             val range = lyricsContainer.height - lyricsScroll.height
@@ -576,6 +711,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             forcedWeatherCode?.let { code ->
                 val w = (weather ?: Weather(18.0, code, 22.0, 11.0, 40, null, null)).copy(code = code)
                 weather = forcedTempC?.let { w.copy(tempC = it) } ?: w
+                forcedRain?.let { weather = weather?.copy(rainChance = it) }
             }
             val phase = sky.forcedMoonPhase ?: SkyView.moonPhase(System.currentTimeMillis())
             dispatch(Action.DatosChanged(Datos.cards(today, weather, phase, efemerides, nice), weather, now))
@@ -617,7 +753,11 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         coverJob?.cancel()
         cover.setImageDrawable(null)
         cover.visibility = if (url == null) View.GONE else View.VISIBLE
-        if (url == null) return
+        if (url == null) {
+            coverLabel = TransportCapsule.DEFAULT_LABEL
+            transport.setLabelColor(coverLabel)
+            return
+        }
         coverJob = scope.launch {
             val bitmap = withContext(Dispatchers.IO) {
                 try {
@@ -627,6 +767,12 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
                 }
             }
             if (state.coverUrl != url || bitmap == null) return@launch
+            // La etiqueta del disco: el color más vivo de la portada (una vez, de una copia de 8 × 8).
+            val small = Bitmap.createScaledBitmap(bitmap, 8, 8, true)
+            val pixels = IntArray(64).also { small.getPixels(it, 0, 8, 0, 0, 8, 8) }
+            if (small !== bitmap) small.recycle()
+            coverLabel = TransportCapsule.labelColor(pixels)
+            transport.setLabelColor(coverLabel)
             // La portada nueva aparece con un pequeño rebote.
             cover.setImageBitmap(bitmap)
             cover.alpha = 0f
@@ -864,23 +1010,17 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
                 layoutIdleClock(state)
             }
         }
-        // Play ↔ pausa: el ícono se transforma (la primera vez se pone tal cual).
-        val playing = s.track?.isPlaying == true
-        val wasPlaying = old?.track?.isPlaying
-        if (old?.showControls == true && wasPlaying != null && wasPlaying != playing) {
-            val avd = context.getDrawable(if (playing) R.drawable.avd_play_to_pause else R.drawable.avd_pause_to_play)
-            playPause.setImageDrawable(avd)
-            (avd as? AnimatedVectorDrawable)?.start()
-        } else if (wasPlaying != playing || old.showControls != true) {
-            playPause.setImageResource(if (playing) R.drawable.vd_pause else R.drawable.vd_play)
-        }
+        // Sonando: el disco gira y el brazo baja; en pausa, brazo arriba.
+        transport.playing = s.track?.isPlaying == true
+        songBar.playing = transport.playing
+        volumeIcon.playing = transport.playing
         val v = s.track?.volume
         val volumeShown = if (v == null) View.GONE else View.VISIBLE
         volumeIcon.visibility = volumeShown
         volumeCapsule.visibility = volumeShown
         if (v != null && !dragging) {
             volumeCapsule.setVolume(v, animate = old?.track?.volume != null)
-            volumeIcon.setImageResource(if (v == 0f) R.drawable.ic_volume_off else R.drawable.ic_volume_up)
+            volumeIcon.volume = v
         }
         updatePill(SystemClock.elapsedRealtime())
     }
@@ -890,14 +1030,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         val t = state.track ?: return
         if (dragging || controls.visibility != View.VISIBLE || t.durationMs <= 0) return
         val pos = t.positionAt(now)
-        progressBar.progress = (pos * progressBar.max / t.durationMs).toInt()
-        elapsed.text = clockText(pos)
-        total.text = clockText(t.durationMs)
-    }
-
-    private fun clockText(ms: Long): String {
-        val sec = (ms / 1000).coerceAtLeast(0)
-        return "%d:%02d".format(sec / 60, sec % 60)
+        songBar.setProgress(pos, t.durationMs)
     }
 
     /** Alguien tocó: los controles se quedan un rato. */
@@ -912,7 +1045,8 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
      */
     private fun updatePill(now: Long) {
         val s = state
-        val want = s.showControls && controls.visibility != View.GONE &&
+        // Con la charola de fondos abierta, la píldora se quita del camino.
+        val want = s.showControls && controls.visibility != View.GONE && !s.backgroundsOpen && s.panel == Menus.Panel.NONE &&
             (dragging || !s.showingLyrics || s.track?.isPlaying != true || now - pokedAt < PILL_HIDE_MS)
         if (want == pillUp) return
         pillUp = want
@@ -1157,6 +1291,7 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
             withControls -> bottomAreaHeight(withControls = true) + dp(8)
             else -> dp(32)
         }
+        idleBottomBase = bottom
         idle.setPadding(dp(32), dp(32), dp(32), bottom)
         layoutSides()
     }
@@ -1168,6 +1303,9 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
      *
      * Se mueven con translation (no con márgenes): un margen viejo, al girar, los deja fuera y Android los mide con
      * alto 0.
+     *
+     * Son pixel art: sobre el cielo van a 2x (pixeles dobles, para leerlos de lejos) donde quepan; si no, y con
+     * imagen de fondo, a 1x. Se acomodan con lo que medirán a esa escala (widthAt/heightAt), no con lo que miden ya.
      */
     private fun layoutSides() {
         val small = state.folder != null
@@ -1176,25 +1314,64 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         val wShown = w.visibility == View.VISIBLE
         when {
             small -> {
+                restoreIdleBottom()
+                w.pixelScale = 1
+                b.pixelScale = 1
                 val right = idle.width - dp(12)
-                put(w, right - w.width, dp(56))
-                put(b, right - b.width, dp(56) + if (wShown) w.height else 0)
+                put(w, right - w.widthAt(1), dp(68))
+                put(b, right - b.widthAt(1), dp(68) + if (wShown) w.heightAt(1) + dp(6) else 0)
             }
             idle.height > idle.width -> {
                 val above = if (datoBox.visibility == View.VISIBLE) datoBox else message
-                val top = idle.top + above.top + above.height + dp(24)
-                val gap = if (wShown) dp(24) else 0
-                val total = (if (wShown) w.width else 0) + gap + b.width
-                val left = (idle.width - total) / 2
-                val rowH = maxOf(if (wShown) w.height else 0, b.height)
-                put(w, left, top + (rowH - w.height) / 2)
-                put(b, left + (if (wShown) w.width else 0) + gap, top + (rowH - b.height) / 2)
+                val top = idle.top + above.top + above.height + dp(20)
+                val maxW = idle.width - dp(32)
+                val gap = dp(14)
+                // A 2x no caben lado a lado: van uno arriba del otro y el reloj con la tarjeta sube para dejarles
+                // lugar (más relleno abajo). Si ni así caben (p. ej. con los controles de la música), 1x lado a lado.
+                val stacked = (if (wShown) w.heightAt(2) + gap else 0) + b.heightAt(2)
+                val reserve = bottomAreaHeight(withControls = true) + dp(8) + stacked + dp(20)
+                val column = above.top + above.height - clock.top
+                val big = column > 0 && idle.height - idle.paddingTop - reserve >= column &&
+                    (!wShown || w.widthAt(2) <= maxW) && b.widthAt(2) <= maxW
+                val base = if (idleBottomBase >= 0) idleBottomBase else idle.paddingBottom
+                val bottomPad = if (big) maxOf(base, reserve) else base
+                if (idle.paddingBottom != bottomPad) idle.setPadding(idle.paddingLeft, idle.paddingTop, idle.paddingRight, bottomPad)
+                if (big) {
+                    w.pixelScale = 2
+                    b.pixelScale = 2
+                    put(w, (idle.width - w.widthAt(2)) / 2, top)
+                    put(b, (idle.width - b.widthAt(2)) / 2, top + if (wShown) w.heightAt(2) + gap else 0)
+                } else {
+                    w.pixelScale = 1
+                    b.pixelScale = 1
+                    val ww = if (wShown) w.widthAt(1) else 0
+                    val g = if (wShown) dp(24) else 0
+                    val left = (idle.width - (ww + g + b.widthAt(1))) / 2
+                    val rowH = maxOf(if (wShown) w.heightAt(1) else 0, b.heightAt(1))
+                    put(w, left, top + (rowH - w.heightAt(1)) / 2)
+                    put(b, left + ww + g, top + (rowH - b.heightAt(1)) / 2)
+                }
             }
             else -> {
+                restoreIdleBottom()
                 val mid = idle.top + clock.top + clock.height / 2
-                put(w, dp(40), mid - w.height / 2)
-                put(b, idle.width - dp(40) - b.width, mid - b.height / 2)
+                // Lo que queda a cada lado del reloj: a 2x solo si caben los dos (uno grande y otro chico se ve chueco).
+                val slot = (idle.width - clock.width) / 2 - dp(40) - dp(16)
+                val fits = (!wShown || w.widthAt(2) <= slot) && b.widthAt(2) <= slot &&
+                    maxOf(w.heightAt(2), b.heightAt(2)) <= idle.height / 2
+                val ws = if (fits) 2 else 1
+                val bs = ws
+                w.pixelScale = ws
+                b.pixelScale = bs
+                put(w, dp(40), mid - w.heightAt(ws) / 2)
+                put(b, idle.width - dp(40) - b.widthAt(bs), mid - b.heightAt(bs) / 2)
             }
+        }
+    }
+
+    private fun restoreIdleBottom() {
+        if (idleBottomBase >= 0 && idle.paddingBottom != idleBottomBase) {
+            idle.setPadding(idle.paddingLeft, idle.paddingTop, idle.paddingRight, idleBottomBase)
         }
     }
 
@@ -1239,131 +1416,287 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         dispatch(Action.BackgroundChosen(all[(all.indexOf(state.folder) + 1) % all.size], SystemClock.elapsedRealtime()))
     }
 
+    /** La ventanita de arriba enseña el fondo que se ve: el cielo de ahora o la miniatura de la carpeta. */
+    private fun renderWindow(s: ScreenState) {
+        val folder = s.activeFolder
+        windowThumbJob?.cancel()
+        if (folder == null) {
+            bgWindow.showSky(sky.forcedHour ?: SkyView.currentHour())
+            return
+        }
+        windowThumbJob = scope.launch { thumb(folder)?.let(bgWindow::showImage) }
+    }
+
+    /** La charola de postales sube (con una postal por fondo) o baja; la píldora se quita mientras. */
+    private fun renderTray(s: ScreenState) {
+        tray.animate().cancel()
+        trayScrim.animate().cancel()
+        if (s.backgroundsOpen) {
+            val all = backgrounds()
+            val cards = all.map { PostcardTray.Postcard(it, it ?: context.getString(R.string.bg_sky_card)) }
+            val night = night()
+            val portrait = context.resources.displayMetrics.let { it.heightPixels > it.widthPixels }
+            val ready = all.filterNotNull().mapNotNull { f -> thumbs[thumbKey(f, night, portrait)]?.let { f to it } }.toMap()
+            tray.show(cards, s.folder, ready, sky.forcedHour ?: SkyView.currentHour())
+            tray.visibility = View.VISIBLE
+            trayScrim.visibility = View.VISIBLE
+            tray.translationY = (if (tray.height > 0) tray.height else dp(TRAY_DP)).toFloat()
+            tray.animate().translationY(0f).setDuration(420).setInterpolator(OvershootInterpolator(0.9f)).start()
+            trayScrim.animate().alpha(1f).setDuration(300).start()
+            trayThumbsJob?.cancel()
+            trayThumbsJob = scope.launch {
+                for (folder in all.filterNotNull()) {
+                    if (!state.backgroundsOpen) break
+                    thumb(folder)?.let { tray.setThumb(folder, it) }
+                }
+            }
+        } else if (tray.visibility == View.VISIBLE) {
+            trayThumbsJob?.cancel()
+            tray.animate().translationY(tray.height.toFloat()).setDuration(280).setInterpolator(AccelerateInterpolator(1.5f))
+                .withEndAction { if (!state.backgroundsOpen) tray.visibility = View.GONE }.start()
+            trayScrim.animate().alpha(0f).setDuration(280)
+                .withEndAction { if (!state.backgroundsOpen) trayScrim.visibility = View.GONE }.start()
+        }
+        updatePill(SystemClock.elapsedRealtime())
+    }
+
+    /**
+     * La miniatura de una carpeta: su primera imagen por nombre (de las que tocan a esta hora y quedan con la
+     * pantalla), leída en chiquito con inSampleSize (nunca la foto grande completa) y guardada en memoria.
+     */
+    private suspend fun thumb(folder: String): Bitmap? {
+        val night = night()
+        val portrait = context.resources.displayMetrics.let { it.heightPixels > it.widthPixels }
+        // De día y de noche (sus dia/ y noche/), y parada o acostada, la carpeta puede enseñar otra imagen.
+        val key = thumbKey(folder, night, portrait)
+        thumbs[key]?.let { return it }
+        val bitmap = withContext(Dispatchers.IO) {
+            ArtView.fitting(ArtView.available(folder, night), portrait).minByOrNull { it.name }?.let(::decodeThumb)
+        } ?: return null
+        thumbs[key] = bitmap
+        return bitmap
+    }
+
+    private fun thumbKey(folder: String, night: Boolean, portrait: Boolean) = "$folder|$night|$portrait"
+
+    private fun decodeThumb(file: java.io.File): Bitmap? = try {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.path, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) null
+        else {
+            var sample = 1
+            while (bounds.outWidth / (sample * 2) >= THUMB_W * 2 && bounds.outHeight / (sample * 2) >= THUMB_H * 2) sample *= 2
+            BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })?.let { b ->
+                // Lo justo para cubrir la postal (THUMB_W × THUMB_H) sin perder la forma.
+                val k = maxOf(THUMB_W / b.width.toFloat(), THUMB_H / b.height.toFloat())
+                if (k >= 1f) b
+                else Bitmap.createScaledBitmap(b, maxOf(1, (b.width * k).toInt() + 1), maxOf(1, (b.height * k).toInt() + 1), true)
+                    .also { if (it !== b) b.recycle() }
+            }
+        }
+    } catch (_: OutOfMemoryError) {
+        null
+    }
+
     private fun backgroundName(name: String?) =
         if (name == null) context.getString(R.string.bg_sky) else context.getString(R.string.bg_folder, name, ArtView.count(name))
 
     // ---- Menús (solo desde la app; el protector la abre) ----
 
     fun showHelp(activity: Activity) {
-        AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle(R.string.help_title)
-            .setMessage(R.string.help_text)
-            .setPositiveButton(R.string.help_screensaver) { _, _ -> openScreensaverSettings(activity) }
-            .setNegativeButton(R.string.close, null)
-            .show()
+        menuActivity = activity
+        dispatch(Action.OpenPanel(Menus.Panel.HELP))
     }
 
     /**
-     * Menú de opciones. Cada toque cambia esa opción y el menú se vuelve a abrir con el valor nuevo, así se ve el
-     * efecto detrás.
+     * El cajón de opciones. Las que cambian un valor lo cambian ahí mismo (la ficha se redibuja y el cajón sigue
+     * abierto, así se ve el efecto detrás); las que abren otra cosa cierran el cajón y abren lo suyo.
      */
     fun showOptions(activity: Activity, onLogout: () -> Unit) {
-        val s = state
-        val reopen = { showOptions(activity, onLogout) }
-        // (texto, qué hace). Las que cambian un ajuste vuelven a abrir el menú; las que abren otra cosa, no.
-        val items = mutableListOf<Pair<String, () -> Unit>>(
-            context.getString(R.string.opt_background, backgroundName(s.folder)) to { pickBackground(activity, onLogout) },
-            context.getString(R.string.opt_fit, context.getString(if (s.fitImage) R.string.opt_fit_whole else R.string.opt_fit_fill)) to
-                { dispatch(Action.ToggleFit); reopen() },
-            context.getString(
-                R.string.opt_every,
-                if (s.imageEveryMin == 0) context.getString(R.string.opt_every_song)
-                else context.getString(R.string.opt_every_min, s.imageEveryMin),
-            ) to { dispatch(Action.CycleImageEvery); reopen() },
-            context.getString(R.string.opt_scrim, context.resources.getStringArray(R.array.scrim_levels)[s.scrimLevel]) to
-                { dispatch(Action.CycleScrim); reopen() },
-            context.getString(R.string.opt_quiet, context.getString(if (s.quietEnabled) R.string.quiet_auto else R.string.quiet_off)) to
-                { dispatch(Action.ToggleQuiet); reopen() },
-            context.getString(R.string.opt_translate, langName(s.translateTo)) to { dispatch(Action.CycleTranslateTo); reopen() },
-            context.getString(R.string.opt_next_art) to {
-                val now = SystemClock.elapsedRealtime()
+        menuActivity = activity
+        this.onLogout = onLogout
+        dispatch(Action.OpenPanel(Menus.Panel.OPTIONS))
+    }
+
+    private fun optionRows(s: ScreenState): List<OptionsPanel.Row> =
+        Menus.options(auth.isLoggedIn, auth.hasClientId).map { o ->
+            val (label, value) = when (o) {
+                Menus.Option.BACKGROUND -> context.getString(R.string.opt_label_background) to backgroundName(s.folder)
+                Menus.Option.FIT -> context.getString(R.string.opt_label_fit) to
+                    context.getString(if (s.fitImage) R.string.opt_fit_whole else R.string.opt_fit_fill)
+                Menus.Option.EVERY -> context.getString(R.string.opt_label_every) to
+                    (if (s.imageEveryMin == 0) context.getString(R.string.opt_every_song) else context.getString(R.string.opt_every_min, s.imageEveryMin))
+                Menus.Option.SCRIM -> context.getString(R.string.opt_label_scrim) to
+                    context.resources.getStringArray(R.array.scrim_levels)[s.scrimLevel.coerceIn(0, ScreenState.SCRIM_LEVELS - 1)]
+                Menus.Option.QUIET -> context.getString(R.string.opt_label_quiet) to
+                    context.getString(if (s.quietEnabled) R.string.quiet_auto else R.string.quiet_off)
+                Menus.Option.TRANSLATE -> context.getString(R.string.opt_label_translate) to langName(s.translateTo)
+                Menus.Option.NEXT_IMAGE -> context.getString(R.string.opt_next_art) to null
+                Menus.Option.SCREENSAVER -> context.getString(R.string.help_screensaver) to null
+                Menus.Option.HELP -> context.getString(R.string.help_title) to null
+                Menus.Option.DEVICES -> context.getString(R.string.opt_devices) to null
+                Menus.Option.LOGOUT -> context.getString(R.string.logout) to null
+                Menus.Option.CONNECT -> context.getString(R.string.connect) to null
+            }
+            OptionsPanel.Row(o, label, value, Menus.control(o), Menus.setting(o, s), Menus.objectCell(o, s))
+        }
+
+    private fun onOption(o: Menus.Option) {
+        Menus.action(o)?.let {
+            dispatch(it)
+            return
+        }
+        val now = SystemClock.elapsedRealtime()
+        when (o) {
+            // Abre la charola de postales (y eso cierra el cajón).
+            Menus.Option.BACKGROUND -> dispatch(Action.OpenBackgrounds(now))
+            Menus.Option.NEXT_IMAGE -> {
+                dispatch(Action.ClosePanel)
                 if (state.folder == null) backgrounds().getOrNull(1)?.let { dispatch(Action.BackgroundChosen(it, now)) }
                 else dispatch(Action.NextImage(now))
-            },
-            context.getString(R.string.help_screensaver) to { openScreensaverSettings(activity) },
-            context.getString(R.string.help_title) to { showHelp(activity) },
+            }
+            Menus.Option.SCREENSAVER -> {
+                dispatch(Action.ClosePanel)
+                menuActivity?.let(::openScreensaverSettings)
+            }
+            Menus.Option.HELP -> dispatch(Action.OpenPanel(Menus.Panel.HELP))
+            Menus.Option.DEVICES -> {
+                demoDevices = false
+                dispatch(Action.OpenPanel(Menus.Panel.DEVICES))
+            }
+            Menus.Option.LOGOUT -> {
+                dispatch(Action.ClosePanel)
+                onLogout()
+            }
+            Menus.Option.CONNECT -> {
+                dispatch(Action.ClosePanel)
+                host.startLogin()
+            }
+            else -> Unit
+        }
+    }
+
+    /** Abre o cierra el menú en pixel que toca (uno a la vez); la píldora se quita mientras. */
+    private fun renderPanel(old: Menus.Panel, s: ScreenState) {
+        val views = mapOf(
+            Menus.Panel.OPTIONS to optionsPanel as View,
+            Menus.Panel.HELP to helpNotebook as View,
+            Menus.Panel.DEVICES to devicesTray as View,
         )
-        // Con sesión: elegir en qué aparato suena Spotify (la PC, una bocina, el celular…).
-        if (auth.isLoggedIn) items += context.getString(R.string.opt_devices) to { pickDevice(activity) }
-        // Sesión de Spotify: "Cerrar sesión" si hay, o "Conectar con Spotify" si hay client ID (aunque Javbots
-        // esté configurado: así la tablet puede funcionar sin la PC).
-        if (auth.isLoggedIn) items += context.getString(R.string.logout) to onLogout
-        else if (auth.hasClientId) items += context.getString(R.string.connect) to { host.startLogin() }
-        AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle(R.string.opt_title)
-            .setItems(items.map { it.first }.toTypedArray()) { _, which -> items[which].second() }
-            .setNegativeButton(R.string.close, null)
-            .show()
+        views[old]?.let { v -> hidePanel(v, old) }
+        val v = views[s.panel]
+        if (v == null) {
+            menuScrim.animate().cancel()
+            menuScrim.animate().alpha(0f).setDuration(240)
+                .withEndAction { if (state.panel == Menus.Panel.NONE) menuScrim.visibility = View.GONE }.start()
+            devicesJob?.cancel()
+        } else {
+            menuScrim.animate().cancel()
+            menuScrim.visibility = View.VISIBLE
+            menuScrim.animate().alpha(1f).setDuration(240).start()
+            when (s.panel) {
+                Menus.Panel.OPTIONS -> {
+                    optionsPanel.columns = if (landscape) 2 else 1
+                    optionsPanel.show(optionRows(s))
+                }
+                Menus.Panel.HELP -> {
+                    helpNotebook.spread = landscape
+                    val pages = Menus.helpPages(
+                        context.resources.getStringArray(R.array.help_titles).toList(),
+                        context.resources.getStringArray(R.array.help_pages).toList(),
+                    )
+                    val screensaver = pages.indexOfFirst { it.title == context.getString(R.string.help_screensaver) }
+                    helpNotebook.show(pages, screensaver, context.getString(R.string.help_open_screensaver),
+                        context.getString(R.string.help_page_of), debugHelpPage.also { debugHelpPage = 0 })
+                }
+                Menus.Panel.DEVICES -> loadDevices()
+                Menus.Panel.NONE -> Unit
+            }
+            v.animate().cancel()
+            v.visibility = View.VISIBLE
+            if (s.panel == Menus.Panel.DEVICES) {
+                v.alpha = 1f
+                v.translationY = (if (v.height > 0) v.height else dp(DEVICES_DP)).toFloat()
+                v.animate().translationY(0f).setDuration(420).setInterpolator(OvershootInterpolator(0.9f)).start()
+            } else {
+                // El cajón y la libreta salen de su botón de arriba: bajan un poco y aparecen.
+                v.alpha = 0f
+                v.translationY = -dp(24).toFloat()
+                v.animate().alpha(1f).translationY(0f).setDuration(260).setInterpolator(DecelerateInterpolator(1.6f)).start()
+            }
+        }
+        updatePill(SystemClock.elapsedRealtime())
+    }
+
+    private fun hidePanel(v: View, which: Menus.Panel) {
+        v.animate().cancel()
+        val end = {
+            if (state.panel != which) {
+                v.visibility = View.GONE
+                if (which == Menus.Panel.HELP) helpNotebook.release()
+            }
+        }
+        if (which == Menus.Panel.DEVICES) {
+            v.animate().translationY(v.height.toFloat()).setDuration(280).setInterpolator(AccelerateInterpolator(1.5f)).withEndAction(end).start()
+        } else {
+            v.animate().alpha(0f).translationY(-dp(16).toFloat()).setDuration(200).withEndAction(end).start()
+        }
     }
 
     /**
-     * Lista de aparatos con Spotify abierto; al tocar uno la música se pasa ahí. Si la sesión es de antes de pedir
-     * el permiso de controlar la reproducción, primero hay que volver a conectar.
+     * El mueble de aparatos: sube en seguida con "buscando…", y luego llegan los aparatos (o un letrero si no hay, o
+     * el botón para volver a conectar si la sesión es de antes de pedir el permiso de controlar la reproducción).
      */
-    private fun pickDevice(activity: Activity) {
-        if (auth.needsReconnect) {
-            AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle(R.string.opt_devices)
-                .setMessage(R.string.devices_reconnect)
-                .setPositiveButton(R.string.connect) { _, _ -> host.startLogin() }
-                .setNegativeButton(R.string.cancel, null)
-                .show()
+    private fun loadDevices() {
+        devicesJob?.cancel()
+        if (demoDevices) {
+            devicesTray.showDevices(Menus.DEMO_DEVICES)
             return
         }
-        val loading = Toast.makeText(context, R.string.devices_loading, Toast.LENGTH_SHORT).also { it.show() }
-        scope.launch {
+        if (auth.needsReconnect) {
+            devicesTray.showMessage(context.getString(R.string.devices_reconnect), context.getString(R.string.connect))
+            return
+        }
+        devicesTray.showLoading(context.getString(R.string.devices_loading))
+        devicesJob = scope.launch {
             val devices = withContext(Dispatchers.IO) { player.devices() }.orEmpty()
-            loading.cancel()
-            if (activity.isFinishing) return@launch
-            if (devices.isEmpty()) {
-                toast(context.getString(R.string.devices_none))
-                return@launch
-            }
-            val names = devices.map { if (it.type.isBlank()) it.name else "${it.name} · ${deviceType(it.type)}" }
-            AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle(R.string.devices_title)
-                .setSingleChoiceItems(names.toTypedArray(), devices.indexOfFirst { it.isActive }) { dialog, which ->
-                    dialog.dismiss()
-                    transferTo(devices[which])
-                }
-                .setNegativeButton(R.string.close, null)
-                .show()
+            if (state.panel != Menus.Panel.DEVICES) return@launch
+            playingOn = devices.firstOrNull { it.isActive }?.id
+            if (devices.isEmpty()) devicesTray.showMessage(context.getString(R.string.devices_none))
+            else devicesTray.showDevices(devices)
         }
     }
 
-    private fun deviceType(type: String) = when (type.lowercase()) {
-        "computer" -> "PC"
-        "smartphone" -> "celular"
-        "speaker" -> "bocina"
-        "tv" -> "TV"
-        "tablet" -> "tablet"
-        else -> type.lowercase()
+    /** Escogieron otro aparato en el mueble: la música se pasa ahí (el mueble ya hizo su viaje) y luego se cierra. */
+    private fun pickDevice(device: Device) {
+        if (demoDevices) {
+            toast(context.getString(R.string.devices_demo, device.name))
+            closeDevicesSoon()
+            return
+        }
+        val before = playingOn
+        transferTo(device) { ok ->
+            // No se pudo: Hunter y las notas regresan al que sonaba.
+            if (ok) playingOn = device.id else before?.let(devicesTray::setActive)
+            closeDevicesSoon()
+        }
+    }
+
+    private fun closeDevicesSoon() {
+        devicesTray.postDelayed({ if (state.panel == Menus.Panel.DEVICES) dispatch(Action.ClosePanel) }, DEVICES_CLOSE_MS)
     }
 
     /** Pasa la música al aparato y vuelve a preguntar en seguida para verlo reflejado. */
-    private fun transferTo(device: Device) {
+    private fun transferTo(device: Device, done: (Boolean) -> Unit = {}) {
         scope.launch {
             val ok = withContext(Dispatchers.IO) { player.transferTo(device.id) }
             toast(context.getString(if (ok) R.string.devices_moved else R.string.devices_failed, device.name))
+            done(ok)
             if (!ok) return@launch
             delay(CONTROL_REFRESH_MS)
             val (result, _) = withContext(Dispatchers.IO) { pollOnce() }
             dispatch(Action.Polled(result, SystemClock.elapsedRealtime(), viaJavbots = javbots.isConfigured))
         }
-    }
-
-    /** Lista de fondos para escoger: el cielo y cada carpeta con cuántas imágenes tiene. */
-    private fun pickBackground(activity: Activity, onLogout: () -> Unit) {
-        val all = backgrounds()
-        AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle(R.string.opt_pick_background)
-            .setSingleChoiceItems(all.map(::backgroundName).toTypedArray(), all.indexOf(state.folder)) { dialog, which ->
-                dialog.dismiss()
-                dispatch(Action.BackgroundChosen(all[which], SystemClock.elapsedRealtime()))
-                showOptions(activity, onLogout)
-            }
-            .setNegativeButton(R.string.close, null)
-            .show()
     }
 
     private fun openScreensaverSettings(activity: Activity) {
@@ -1459,6 +1792,19 @@ class Pantalla(private val context: Context, root: View, private val host: Host)
         /** Cuánto baja la píldora al esconderse. */
         const val PILL_DROP_DP = 28
         const val PILL_MAX_DP = 640
+        /** Alto aproximado de la charola de postales (antes de medirla). */
+        const val TRAY_DP = 140
+        /** Alto del mueble de aparatos (antes de medirlo). */
+        const val DEVICES_DP = 210
+        /** Tras escoger un aparato, cuánto se queda abierto el mueble (para ver el viaje de las notas y Hunter). */
+        const val DEVICES_CLOSE_MS = 1_800L
+        /** Lo que tarda en abrirse la ayuda o las opciones (para ver columpiarse el letrero o abrirse el cajón). */
+        const val MENU_DELAY_MS = 260L
+        /** Solo debug: la animación del tocadiscos más lenta para capturarla. */
+        const val DEBUG_SLOWER = 8
+        /** Miniatura de cada carpeta: lo justo para la foto de la postal (108 × 68). */
+        const val THUMB_W = 108
+        const val THUMB_H = 68
         /** Javbots sube o baja el volumen de 10 en 10 (javbots-musica.js, VOLUME_STEP). */
         const val JAVBOTS_VOLUME_STEP = 0.1f
     }

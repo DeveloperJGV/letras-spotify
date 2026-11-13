@@ -86,6 +86,12 @@ data class ScreenState(
     val translationFailed: Boolean = false,
     /** En vertical, un toque en la letra la cambia por la traducción (y otro la regresa). */
     val showTranslation: Boolean = false,
+    /** La charola de postales para elegir el fondo está abierta. */
+    val backgroundsOpen: Boolean = false,
+    /** Cuándo se cierra sola la charola (si nadie la toca); se recorre con cada toque. */
+    val trayCloseAt: Long = 0,
+    /** El menú en pixel abierto encima de la pantalla: el cajón de opciones, la libretita o el mueble de aparatos. */
+    val panel: Menus.Panel = Menus.Panel.NONE,
 ) {
     val showingLyrics get() = waiting == null
 
@@ -138,6 +144,10 @@ data class ScreenState(
         const val LEAD_MS = 250L
         val IMAGE_EVERY_OPTIONS = listOf(0, 5, 15, 60)
         const val SCRIM_LEVELS = 3
+        /** La charola de fondos se cierra sola tras este rato sin tocarla. */
+        const val TRAY_IDLE_MS = 12_000L
+        /** Después de escoger una postal, cuánto se queda abierta (para ver a Hunter brincar a ella). */
+        const val TRAY_CHOSEN_MS = 1_400L
         /** Idiomas a los que se puede traducir, en el orden del menú (y luego "no"). */
         val TRANSLATE_OPTIONS = listOf("es", "en")
 
@@ -184,7 +194,21 @@ sealed interface Action {
     data class DatosChanged(val datos: List<Dato>, val weather: Weather?, val now: Long) : Action
     /** Antes de consultar: falta configuración o iniciar sesión. */
     data class NeedsSetup(val waiting: Waiting) : Action
-    data class BackgroundChosen(val folder: String?, val now: Long) : Action
+    /**
+     * Se escogió un fondo. [fromTray]: desde la charola de postales (ya se ve cuál quedó: sin mensajito, y la charola
+     * se cierra al ratito); si no, el doble toque o el debug (con mensajito).
+     */
+    data class BackgroundChosen(val folder: String?, val now: Long, val fromTray: Boolean = false) : Action
+    /** Abrir la charola de postales (el botón de la ventanita, o "Fondo" en Opciones). */
+    data class OpenBackgrounds(val now: Long) : Action
+    /** Cerrarla: tocar fuera, el botón de atrás. */
+    data object CloseBackgrounds : Action
+    /** Alguien toca o desliza la charola: se queda abierta otro rato. */
+    data class TrayTouched(val now: Long) : Action
+    /** Abrir un menú en pixel (uno a la vez; cierra la charola de fondos). */
+    data class OpenPanel(val panel: Menus.Panel) : Action
+    /** Cerrarlo: tocar fuera, el botón de atrás o una opción que abre otra cosa. */
+    data object ClosePanel : Action
     data class NextImage(val now: Long) : Action
     data object ToggleFit : Action
     data object CycleImageEvery : Action
@@ -259,10 +283,21 @@ private fun reduceAction(s: ScreenState, action: Action): Result = when (action)
     is Action.BatteryChanged -> Result(s.copy(battery = action.battery))
     is Action.DatosChanged -> datosChanged(s, action)
     is Action.NeedsSetup -> Result(s.copy(waiting = action.waiting, track = null, controlVia = null))
-    is Action.BackgroundChosen -> Result(
-        s.copy(folder = action.folder, lastImageAt = action.now),
-        listOf(if (action.folder == null) Effect.HideImage else Effect.NextImage, Effect.SavePrefs, Effect.AnnounceBackground),
-    )
+    is Action.BackgroundChosen -> {
+        val changes = listOf(if (action.folder == null) Effect.HideImage else Effect.NextImage, Effect.SavePrefs)
+        if (action.fromTray) Result(
+            s.copy(folder = action.folder, lastImageAt = action.now, trayCloseAt = action.now + ScreenState.TRAY_CHOSEN_MS),
+            changes,
+        )
+        else Result(s.copy(folder = action.folder, lastImageAt = action.now), changes + Effect.AnnounceBackground)
+    }
+    is Action.OpenBackgrounds ->
+        Result(s.copy(backgroundsOpen = true, trayCloseAt = action.now + ScreenState.TRAY_IDLE_MS, panel = Menus.Panel.NONE))
+    is Action.OpenPanel -> Result(s.copy(panel = action.panel, backgroundsOpen = if (action.panel == Menus.Panel.NONE) s.backgroundsOpen else false))
+    Action.ClosePanel -> Result(s.copy(panel = Menus.Panel.NONE))
+    Action.CloseBackgrounds -> Result(s.copy(backgroundsOpen = false))
+    is Action.TrayTouched ->
+        if (!s.backgroundsOpen) Result(s) else Result(s.copy(trayCloseAt = maxOf(s.trayCloseAt, action.now + ScreenState.TRAY_IDLE_MS)))
     is Action.NextImage ->
         if (s.activeFolder == null) Result(s) else Result(s.copy(lastImageAt = action.now), listOf(Effect.NextImage))
     Action.ToggleFit -> Result(s.copy(fitImage = !s.fitImage), listOf(Effect.SavePrefs))
@@ -419,6 +454,8 @@ private fun datosChanged(s: ScreenState, a: Action.DatosChanged): Result {
 
 private fun tick(s: ScreenState, now: Long): Result {
     var next = s
+    // La charola de fondos se cierra sola si nadie la toca (o al ratito de escoger).
+    if (s.backgroundsOpen && now >= s.trayCloseAt) next = next.copy(backgroundsOpen = false)
     // Con el reloj, la tarjeta de datos pasa a la siguiente cada tanto.
     if (!s.showingLyrics && s.datos.size > 1 && now - s.datoSince > ScreenState.DATO_MS) {
         next = next.copy(datoIndex = (s.datoIndex + 1) % s.datos.size, datoSince = now)

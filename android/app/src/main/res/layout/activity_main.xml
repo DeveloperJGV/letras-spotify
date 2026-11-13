@@ -283,21 +283,39 @@
         android:layout_margin="12dp"
         android:orientation="horizontal">
 
-        <ImageButton
+        <!-- La ayuda: un letrero de madera con "?" que se columpia al tocarlo (PixelButton.kt). -->
+        <dev.jgv.letras.HelpSign
             android:id="@+id/btnHelp"
-            style="@style/RoundButton"
-            android:contentDescription="@string/help_title"
-            android:src="@drawable/ic_help" />
-        <ImageButton
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="5dp"
+            android:layout_marginEnd="5dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:contentDescription="@string/help_title" />
+        <!-- El fondo: una ventanita en pixel que enseña el fondo actual; abre la charola de postales. -->
+        <dev.jgv.letras.BackgroundWindow
             android:id="@+id/btnBackground"
-            style="@style/RoundButton"
-            android:contentDescription="@string/bg_button"
-            android:src="@drawable/ic_wallpaper" />
-        <ImageButton
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="5dp"
+            android:layout_marginEnd="5dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:contentDescription="@string/bg_button" />
+        <!-- Las opciones: una comodita de tres cajones (sus perillas son los tres puntitos). -->
+        <dev.jgv.letras.OptionsDrawer
             android:id="@+id/btnOptions"
-            style="@style/RoundButton"
-            android:contentDescription="@string/opt_title"
-            android:src="@drawable/ic_more" />
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="5dp"
+            android:layout_marginEnd="5dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:contentDescription="@string/opt_title" />
         <ImageButton
             android:id="@+id/btnExit"
             style="@style/RoundButton"
@@ -329,28 +347,12 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <ImageButton
-                android:id="@+id/btnPrevious"
-                style="@style/PillButton"
-                android:contentDescription="@string/previous"
-                android:src="@drawable/ic_previous" />
-            <ImageButton
-                android:id="@+id/playPause"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
-                android:layout_marginStart="6dp"
-                android:layout_marginEnd="6dp"
-                android:background="@drawable/play_button"
-                android:contentDescription="@string/play_pause"
-                android:elevation="4dp"
-                android:padding="13dp"
-                android:scaleType="fitCenter"
-                android:src="@drawable/vd_pause" />
-            <ImageButton
-                android:id="@+id/btnNext"
-                style="@style/PillButton"
-                android:contentDescription="@string/next"
-                android:src="@drawable/ic_next" />
+            <!-- Anterior, play/pausa y siguiente: el tocadiscos en el cuarto de Hunter y Tango (TransportCapsule.kt). -->
+            <dev.jgv.letras.TransportCapsule
+                android:id="@+id/transport"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/transport" />
 
             <View
                 android:layout_width="0dp"
@@ -358,16 +360,14 @@
                 android:layout_weight="1"
                 android:minWidth="12dp" />
 
-            <!-- Tocar la bocina: silencio (y otra vez, de regreso). -->
-            <ImageButton
+            <!-- Tocar la corneta: silencio (le meten un calcetín) y otra vez, de regreso (MuteHorn.kt). -->
+            <dev.jgv.letras.MuteHorn
                 android:id="@+id/volumeIcon"
-                style="@style/PillButton"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:padding="8dp"
-                android:alpha="0.8"
-                android:contentDescription="@string/mute"
-                android:src="@drawable/ic_volume_up" />
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="@string/mute" />
             <!-- El volumen: el cuarto de Hunter y Tango con una lupa de vidrio que se arrastra (VolumeCapsule.kt). -->
             <dev.jgv.letras.VolumeCapsule
                 android:id="@+id/volumeCapsule"
@@ -377,27 +377,12 @@
                 android:contentDescription="@string/volume" />
         </LinearLayout>
 
-        <LinearLayout
+        <!-- La barra de la canción: el cable de foquitos con los tiempos en letreritos (SongBar.kt). -->
+        <dev.jgv.letras.SongBar
+            android:id="@+id/songBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/elapsed"
-                style="@style/PillTime"
-                android:gravity="end" />
-            <SeekBar
-                android:id="@+id/progressBar"
-                style="@style/PillSeek"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:max="1000" />
-            <TextView
-                android:id="@+id/total"
-                style="@style/PillTime"
-                android:gravity="start" />
-        </LinearLayout>
+            android:contentDescription="@string/song_bar" />
     </LinearLayout>
 
     <dev.jgv.letras.DogsView
@@ -406,4 +391,65 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         android:paddingBottom="8dp" />
+
+    <!-- Con la charola abierta: oscurece un poco y tocar fuera la cierra. -->
+    <View
+        android:id="@+id/trayScrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:alpha="0"
+        android:background="#66000000"
+        android:clickable="true"
+        android:visibility="gone" />
+
+    <!-- La charola de postales para elegir el fondo (PostcardTray.kt): sube desde abajo. -->
+    <dev.jgv.letras.PostcardTray
+        android:id="@+id/tray"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:elevation="12dp"
+        android:visibility="gone" />
+    <!-- Los menús en pixel (Menus.kt): un velo que cierra al tocar fuera, el cajón de opciones (OptionsPanel.kt),
+         la libretita de ayuda (HelpNotebook.kt) y el mueble de "Reproducir en…" (DevicesTray.kt, sube desde abajo). -->
+    <View
+        android:id="@+id/menuScrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:alpha="0"
+        android:background="#82060610"
+        android:clickable="true"
+        android:visibility="gone" />
+
+    <dev.jgv.letras.OptionsPanel
+        android:id="@+id/optionsPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="68dp"
+        android:layout_marginEnd="16dp"
+        android:elevation="12dp"
+        android:visibility="gone" />
+
+    <dev.jgv.letras.HelpNotebook
+        android:id="@+id/helpNotebook"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:layout_marginTop="72dp"
+        android:elevation="12dp"
+        android:visibility="gone" />
+
+    <dev.jgv.letras.DevicesTray
+        android:id="@+id/devicesTray"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:elevation="12dp"
+        android:visibility="gone" />
 </FrameLayout>

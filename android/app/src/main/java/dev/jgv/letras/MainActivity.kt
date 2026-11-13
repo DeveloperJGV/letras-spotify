@@ -65,6 +65,12 @@ class MainActivity : Activity(), Pantalla.Host {
         super.onDestroy()
     }
 
+    /** Atrás cierra primero el menú en pixel o la charola de fondos (si hay uno abierto). */
+    @Deprecated("Android 5: no hay OnBackPressedDispatcher sin AndroidX")
+    override fun onBackPressed() {
+        if (!pantalla.onBack()) super.onBackPressed()
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) hideSystemBars()
@@ -83,13 +89,19 @@ class MainActivity : Activity(), Pantalla.Host {
             Pantalla.Menu.entries.firstOrNull { it.name == name }?.let { window.decorView.post { openMenu(it) } }
         }
         if (!BuildConfig.DEBUG) return
-        // Solo debug: --ef hora 19.5, --ef luna 0.5, --es fondo Lofi (o cielo), --ei clima 61 [--ef temp 28], --ei demo 40 [--ef bpm 70] [--ez pausa true]
+        // Solo debug: --ef hora 19.5, --ef luna 0.5, --es fondo Lofi (o cielo), --ei clima 61 [--ef temp 28], --ei demo 40 [--ef bpm 70] [--ez pausa true] [--es animar next]
         val hour = if (extras.hasExtra(EXTRA_HOUR)) extras.getFloatExtra(EXTRA_HOUR, 12f) else null
         val moon = if (extras.hasExtra(EXTRA_MOON)) extras.getFloatExtra(EXTRA_MOON, 0.5f) else null
         val bg = extras.getStringExtra(EXTRA_BACKGROUND)
         val weather = if (extras.hasExtra(EXTRA_WEATHER)) extras.getIntExtra(EXTRA_WEATHER, 0) else null
         val temp = if (extras.hasExtra(EXTRA_TEMP)) extras.getFloatExtra(EXTRA_TEMP, 20f).toDouble() else null
         pantalla.debugOverrides(hour, moon, bg, weather, temp)
+        // --ei lluvia 80: probabilidad de lluvia del clima fijo; --ei pila 12 [--ez cargando true]: solo la vista
+        if (extras.hasExtra(EXTRA_RAIN)) pantalla.debugRainChance(extras.getIntExtra(EXTRA_RAIN, 0))
+        if (extras.hasExtra(EXTRA_BATTERY)) {
+            pantalla.debugBattery(extras.getIntExtra(EXTRA_BATTERY, 100), extras.getBooleanExtra(EXTRA_CHARGING, false))
+        }
+        listOf(EXTRA_RAIN, EXTRA_BATTERY, EXTRA_CHARGING).forEach(extras::removeExtra)
         listOf(EXTRA_HOUR, EXTRA_MOON, EXTRA_BACKGROUND, EXTRA_WEATHER, EXTRA_TEMP).forEach(extras::removeExtra)
         if (extras.hasExtra(EXTRA_DEMO_SECONDS)) {
             pantalla.startDemo(
@@ -98,6 +110,21 @@ class MainActivity : Activity(), Pantalla.Host {
             )
             listOf(EXTRA_BPM, EXTRA_PAUSED).forEach(extras::removeExtra)
             extras.removeExtra(EXTRA_DEMO_SECONDS)
+        }
+        // --ei hoja N: la libretita de ayuda abre en esa hoja (1..9); con --es menu HELP se abre ya.
+        if (extras.hasExtra(EXTRA_HELP_PAGE)) {
+            pantalla.debugHelpPage = (extras.getIntExtra(EXTRA_HELP_PAGE, 1) - 1).coerceAtLeast(0)
+            extras.removeExtra(EXTRA_HELP_PAGE)
+        }
+        // --ez aparatos true: el mueble de "Reproducir en…" con aparatos de ejemplo (escoger uno no llama a la API).
+        if (extras.getBooleanExtra(EXTRA_DEVICES_DEMO, false)) {
+            extras.removeExtra(EXTRA_DEVICES_DEMO)
+            window.decorView.postDelayed({ pantalla.debugDevicesDemo() }, ANIMATE_DELAY_MS)
+        }
+        // --es animar next|previous|cambio: solo la animación del tocadiscos (no manda nada a Spotify).
+        extras.getStringExtra(EXTRA_ANIMATE)?.let { what ->
+            extras.removeExtra(EXTRA_ANIMATE)
+            window.decorView.postDelayed({ pantalla.debugAnimate(what) }, ANIMATE_DELAY_MS)
         }
     }
 
@@ -182,7 +209,15 @@ class MainActivity : Activity(), Pantalla.Host {
         private const val EXTRA_BACKGROUND = "fondo"
         private const val EXTRA_WEATHER = "clima"
         private const val EXTRA_TEMP = "temp"
+        private const val EXTRA_RAIN = "lluvia"
+        private const val EXTRA_BATTERY = "pila"
+        private const val EXTRA_CHARGING = "cargando"
         private const val EXTRA_BPM = "bpm"
         private const val EXTRA_PAUSED = "pausa"
+        private const val EXTRA_ANIMATE = "animar"
+        private const val EXTRA_HELP_PAGE = "hoja"
+        private const val EXTRA_DEVICES_DEMO = "aparatos"
+        /** Espera a que la píldora ya esté arriba para animar el tocadiscos. */
+        private const val ANIMATE_DELAY_MS = 1_500L
     }
 }

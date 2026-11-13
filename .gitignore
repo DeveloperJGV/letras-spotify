@@ -15,3 +15,6 @@ PLAN.md
 
 # Fondos de artistas (arte ajeno: solo en la tablet, nunca al repo)
 fondos/
+
+# Python
+__pycache__/

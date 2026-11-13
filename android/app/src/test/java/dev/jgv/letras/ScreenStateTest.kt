@@ -393,4 +393,45 @@ class ScreenStateTest {
         assertEquals("Lofi", day.state.activeFolder)
         assertTrue(Effect.NextImage in day.effects)
     }
+
+    // ---- Charola de fondos (postales) ----
+
+    @Test
+    fun `la charola se abre y se cierra con atras o tocando fuera`() {
+        val open = reduce(ScreenState(), Action.OpenBackgrounds(1_000)).state
+        assertTrue(open.backgroundsOpen)
+        assertFalse(reduce(open, Action.CloseBackgrounds).state.backgroundsOpen)
+    }
+
+    @Test
+    fun `la charola se cierra sola a los 12 s sin tocarla y cada toque le da otro rato`() {
+        val open = reduce(ScreenState(), Action.OpenBackgrounds(0)).state
+        assertTrue(reduce(open, Action.Tick(ScreenState.TRAY_IDLE_MS - 1)).state.backgroundsOpen)
+        assertFalse(reduce(open, Action.Tick(ScreenState.TRAY_IDLE_MS)).state.backgroundsOpen)
+        val touched = reduce(open, Action.TrayTouched(10_000)).state
+        assertTrue(reduce(touched, Action.Tick(15_000)).state.backgroundsOpen)
+        assertFalse(reduce(touched, Action.Tick(10_000 + ScreenState.TRAY_IDLE_MS)).state.backgroundsOpen)
+    }
+
+    @Test
+    fun `escoger desde la charola no manda el mensajito y la cierra al ratito`() {
+        val open = reduce(ScreenState(), Action.OpenBackgrounds(0)).state
+        val r = reduce(open, Action.BackgroundChosen("Lofi", 2_000, fromTray = true))
+        assertEquals("Lofi", r.state.folder)
+        assertEquals(listOf(Effect.NextImage, Effect.SavePrefs), r.effects)
+        assertTrue(reduce(r.state, Action.Tick(2_000 + ScreenState.TRAY_CHOSEN_MS - 1)).state.backgroundsOpen)
+        assertFalse(reduce(r.state, Action.Tick(2_000 + ScreenState.TRAY_CHOSEN_MS)).state.backgroundsOpen)
+    }
+
+    @Test
+    fun `el doble toque si avisa que fondo quedo`() {
+        val r = reduce(ScreenState(), Action.BackgroundChosen(null, 0))
+        assertTrue(Effect.AnnounceBackground in r.effects)
+        assertFalse(r.state.backgroundsOpen)
+    }
+
+    @Test
+    fun `tocar la charola cerrada no la abre`() {
+        assertFalse(reduce(ScreenState(), Action.TrayTouched(0)).state.backgroundsOpen)
+    }
 }
